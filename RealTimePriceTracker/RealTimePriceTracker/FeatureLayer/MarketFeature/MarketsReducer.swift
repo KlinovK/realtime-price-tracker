@@ -29,38 +29,49 @@ struct MarketsReducer: ReducerProtocol {
         case .websocketMessage(let text):
 
             guard let data = text.data(using: .utf8) else {
+
                 return .none
+
             }
 
             do {
 
                 let response = try JSONDecoder().decode(
+
                     BinanceSocketResponse.self,
+
                     from: data
+
                 )
 
-                let ticker = response.data
+                let t = response.data
 
                 let asset = CryptoAsset(
-                    id: ticker.symbol,
-                    symbol: ticker.symbol,
-                    price: Double(ticker.currentPrice) ?? 0,
-                    change24h: Double(ticker.changePercent) ?? 0
+
+                    id: t.symbol,
+
+                    symbol: t.symbol,
+
+                    price: Double(t.price) ?? 0,
+
+                    change24h: Double(t.changePercent) ?? 0
+
                 )
 
-                if let index = state.assets.firstIndex(
-                    where: { $0.id == asset.id }
-                ) {
+                if let index = state.assets.firstIndex(where: { $0.id == asset.id }) {
 
                     state.assets[index] = asset
 
                 } else {
 
                     state.assets.append(asset)
+
                 }
 
             } catch {
-                state.errorMessage = error.localizedDescription
+
+                print("❌ DECODE ERROR:", error)
+
             }
 
             return .none
@@ -75,9 +86,4 @@ struct MarketsReducer: ReducerProtocol {
             return .none
         }
     }
-}
-
-struct BinanceSocketResponse: Codable {
-    let stream: String
-    let data: BinanceTickerResponse
 }

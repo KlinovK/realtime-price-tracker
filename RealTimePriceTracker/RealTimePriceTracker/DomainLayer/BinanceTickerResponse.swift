@@ -7,15 +7,16 @@
 
 import Foundation
 
-struct BinanceTickerResponse: Codable {
+struct BinanceTicker: Codable {
 
     let symbol: String
-    let currentPrice: String
+    let price: String
     let changePercent: String
 
     enum CodingKeys: String, CodingKey {
         case symbol = "s"
-        case currentPrice = "c"
+        case price = "c"
         case changePercent = "P"
     }
+
 }
