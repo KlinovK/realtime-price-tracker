@@ -1,0 +1,23 @@
+name: iOS CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project RealtimePriceTracker/RealtimePriceTracker.xcodeproj \
+            -scheme RealTimePriceTracker \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            build
