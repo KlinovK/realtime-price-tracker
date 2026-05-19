@@ -16,7 +16,7 @@ jobs:
       - name: Build
         run: |
           xcodebuild \
-            -project RealtimePriceTracker.xcodeproj \
+            -project RealtimePriceTracker/RealtimePriceTracker.xcodeproj \
             -scheme RealtimePriceTracker \
             -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 15' \
