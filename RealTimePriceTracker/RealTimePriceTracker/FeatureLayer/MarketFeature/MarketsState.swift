@@ -11,4 +11,5 @@ struct MarketsState {
     var assets: [CryptoAsset] = []
     var isLoading = false
     var errorMessage: String?
+    var streamURLs: [URL] = []
 }

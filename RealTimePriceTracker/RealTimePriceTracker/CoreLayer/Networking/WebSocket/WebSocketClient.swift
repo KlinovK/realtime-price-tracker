@@ -17,17 +17,23 @@ import Foundation
 /// It is intentionally minimal and stateless aside from the active socket task.
 /// It is designed to be used inside service layers (e.g. `MarketsService`).
 final class WebSocketClient {
-
+    
     // MARK: - Properties
-
+    
+    private let url: URL
+    
     /// The underlying WebSocket task used for network communication.
     ///
     /// This task is created when `connect()` is called and is reused for
     /// receiving streaming messages until `disconnect()` is invoked.
     private var socketTask: URLSessionWebSocketTask?
-
+    
+    init(url: URL) {
+        self.url = url
+    }
+    
     // MARK: - Connection Lifecycle
-
+    
     /// Establishes a WebSocket connection to the configured endpoint.
     ///
     /// This method:
@@ -39,12 +45,11 @@ final class WebSocketClient {
     /// without explicitly closing it. Ensure `disconnect()` is called beforehand.
     func connect() {
         socketTask = URLSession.shared.webSocketTask(
-            with: Endpoint.streamURL
+            with: url
         )
-
         socketTask?.resume()
     }
-
+    
     /// Terminates the active WebSocket connection.
     ///
     /// This cancels the underlying `URLSessionWebSocketTask` immediately.
@@ -53,9 +58,9 @@ final class WebSocketClient {
     func disconnect() {
         socketTask?.cancel()
     }
-
+    
     // MARK: - Streaming
-
+    
     /// Creates an asynchronous stream of incoming WebSocket messages.
     ///
     /// The stream:
@@ -71,40 +76,42 @@ final class WebSocketClient {
     ///
     /// - Returns: An `AsyncThrowingStream<String, Error>` emitting raw text messages.
     func stream() -> AsyncThrowingStream<String, Error> {
-
+        
         AsyncThrowingStream { continuation in
-
+            
+            let startTime = Date()
+            var lastEmitTime: Date = .distantPast
             /// Internal recursive receive loop.
             /// Continuously calls `socketTask?.receive` to listen for new messages.
             func receive() {
-
                 socketTask?.receive { result in
-                    print("📡 SOCKET CALLBACK FIRED") // 🔥 ADD THIS
                     switch result {
-
                     case .failure(let error):
                         /// If the WebSocket fails, terminate the stream with error.
                         continuation.finish(throwing: error)
-
                     case .success(let message):
-
                         switch message {
-
                         case .string(let text):
-                            /// Emit valid text message to the stream consumer.
-                            continuation.yield(text)
-
+                            let now = Date()
+                            let elapsed = now.timeIntervalSince(startTime)
+                            
+                            if elapsed < 5 {
+                                continuation.yield(text)
+                            }
+                                                        
+                            else if now.timeIntervalSince(lastEmitTime) >= 10 {
+                                lastEmitTime = now
+                                continuation.yield(text)
+                            }
                         default:
                             /// Ignore unsupported message types (binary, pong, etc.)
                             break
                         }
-
                         /// Continue listening for the next message.
                         receive()
                     }
                 }
             }
-
             /// Start the receive loop immediately when stream is created.
             receive()
         }

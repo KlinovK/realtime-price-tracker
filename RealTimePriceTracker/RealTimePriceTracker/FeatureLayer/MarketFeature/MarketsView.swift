@@ -2,7 +2,7 @@
 //  ContentView.swift
 //  RealTimePriceTracker
 //
-//  Created by Константин Клинов on 19/05/26.
+//  Created by Kanstantin Klinau on 19/05/26.
 //
 
 import SwiftUI
@@ -12,8 +12,8 @@ struct MarketsView: View {
     @ObservedObject var store: Store<MarketsReducer>
 
     private let columns = Array(
-        repeating: GridItem(.flexible(), spacing: 6),
-        count: 6
+        repeating: GridItem(.flexible(), spacing: 5),
+        count: 5
     )
 
     var body: some View {

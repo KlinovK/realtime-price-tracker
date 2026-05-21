@@ -12,4 +12,5 @@ enum MarketsAction {
     case websocketMessage(String)
     case updateAsset(CryptoAsset)
     case websocketFailed(Error)
+    case rebuildStreams([URL]) 
 }

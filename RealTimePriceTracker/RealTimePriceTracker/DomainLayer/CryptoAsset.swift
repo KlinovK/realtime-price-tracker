@@ -8,7 +8,6 @@
 import Foundation
 
 struct CryptoAsset: Identifiable, Equatable {
-
     let id: String
     let symbol: String
     let price: Double

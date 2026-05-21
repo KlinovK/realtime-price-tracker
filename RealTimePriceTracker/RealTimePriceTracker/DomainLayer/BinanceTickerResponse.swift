@@ -7,8 +7,7 @@
 
 import Foundation
 
-struct BinanceTicker: Codable {
-
+struct BinanceTickerResponse: Codable {
     let symbol: String
     let price: String
     let changePercent: String
@@ -18,5 +17,4 @@ struct BinanceTicker: Codable {
         case price = "c"
         case changePercent = "P"
     }
-
 }

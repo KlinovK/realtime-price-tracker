@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A9F146962FBDC5B000BAB096 /* Algorithms in Frameworks */ = {isa = PBXBuildFile; productRef = A9F146952FBDC5B000BAB096 /* Algorithms */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		A9C9DA3C2FBC24F900DD4FBC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A9F146962FBDC5B000BAB096 /* Algorithms in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = RealTimePriceTracker;
 			packageProductDependencies = (
+				A9F146952FBDC5B000BAB096 /* Algorithms */,
 			);
 			productName = RealTimePriceTracker;
 			productReference = A9C9DA2E2FBC24F700DD4FBC /* RealTimePriceTracker.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = A9C9DA252FBC24F700DD4FBC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A9F146942FBDC5B000BAB096 /* XCRemoteSwiftPackageReference "swift-algorithms" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A9C9DA2F2FBC24F700DD4FBC /* Products */;
 			projectDirPath = "";
@@ -578,6 +587,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A9F146942FBDC5B000BAB096 /* XCRemoteSwiftPackageReference "swift-algorithms" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-algorithms.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A9F146952FBDC5B000BAB096 /* Algorithms */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A9F146942FBDC5B000BAB096 /* XCRemoteSwiftPackageReference "swift-algorithms" */;
+			productName = Algorithms;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A9C9DA262FBC24F700DD4FBC /* Project object */;
 }
