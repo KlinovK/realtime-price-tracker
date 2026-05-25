@@ -7,13 +7,17 @@
 
 import Foundation
 
+protocol TopSymbolsServiceProtocol {
+    func fetchTopSymbols() async -> [String]
+}
+
 /// Service responsible for fetching and preparing top trading symbols.
 ///
 /// `TopSymbolsService`:
 /// - Fetches 24h ticker data from Binance API
 /// - Filters and ranks symbols by trading volume
 /// - Provides a fallback list in case of network failure
-final class TopSymbolsService {
+final class TopSymbolsService: TopSymbolsServiceProtocol {
 
     // MARK: - Properties
     

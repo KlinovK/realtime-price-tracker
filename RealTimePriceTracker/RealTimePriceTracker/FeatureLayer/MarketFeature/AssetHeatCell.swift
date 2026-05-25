@@ -95,6 +95,3 @@ private extension AssetHeatCell {
         }
     }
 }
-
-// MARK: - Formatting
-// Formatting lives in `AssetHeatCellFormatting`.

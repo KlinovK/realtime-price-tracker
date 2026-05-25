@@ -8,6 +8,7 @@
 import XCTest
 @testable import RealTimePriceTracker
 
+@MainActor
 final class AssetHeatCellTests: XCTestCase {
 
     // MARK: - Formatting

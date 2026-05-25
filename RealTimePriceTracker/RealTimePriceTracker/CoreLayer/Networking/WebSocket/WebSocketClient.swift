@@ -16,104 +16,70 @@ import Foundation
 ///
 /// It is intentionally minimal and stateless aside from the active socket task.
 /// It is designed to be used inside service layers (e.g. `MarketsService`).
-final class WebSocketClient {
-    
-    // MARK: - Properties
-    
+
+protocol WebSocketTasking: AnyObject {
+    func resume()
+    func cancel()
+    func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void)
+
+}
+
+extension URLSessionWebSocketTask: WebSocketTasking {}
+
+protocol WebSocketClientProtocol: AnyObject {
+    func connect()
+    func disconnect()
+    func stream() -> AsyncThrowingStream<String, Error>
+    typealias WebSocketTaskFactory = (URLSession, URL) -> WebSocketTasking
+}
+
+final class WebSocketClient: WebSocketClientProtocol {
+
     private let url: URL
-    
-    /// The underlying WebSocket task used for network communication.
-    ///
-    /// This task is created when `connect()` is called and is reused for
-    /// receiving streaming messages until `disconnect()` is invoked.
-    private var socketTask: URLSessionWebSocketTask?
-    
-    init(url: URL) {
+    private let session: URLSession
+    private let taskFactory: WebSocketTaskFactory
+    private var socketTask: WebSocketTasking?
+
+    init(
+        url: URL,
+        session: URLSession = .shared,
+        taskFactory: @escaping WebSocketTaskFactory = { session, url in
+            session.webSocketTask(with: url)
+        }
+    ) {
         self.url = url
+        self.session = session
+        self.taskFactory = taskFactory
     }
-    
-    // MARK: - Connection Lifecycle
-    
-    /// Establishes a WebSocket connection to the configured endpoint.
-    ///
-    /// This method:
-    /// 1. Creates a `URLSessionWebSocketTask` using `Endpoint.streamURL`
-    /// 2. Starts the connection immediately using `resume()`
-    ///
-    /// ⚠️ Note:
-    /// Calling `connect()` multiple times will overwrite the previous socket task
-    /// without explicitly closing it. Ensure `disconnect()` is called beforehand.
+
     func connect() {
-        socketTask = URLSession.shared.webSocketTask(
-            with: url
-        )
+        socketTask = taskFactory(session, url)
         socketTask?.resume()
     }
-    
-    /// Terminates the active WebSocket connection.
-    ///
-    /// This cancels the underlying `URLSessionWebSocketTask` immediately.
-    /// After calling this method, the client will no longer receive messages
-    /// unless `connect()` is called again.
+
     func disconnect() {
         socketTask?.cancel()
     }
-    
-    // MARK: - Streaming
-    
-    /// Creates an asynchronous stream of incoming WebSocket messages.
-    ///
-    /// The stream:
-    /// - Listens continuously for incoming WebSocket messages
-    /// - Emits only string-based messages (`.string`)
-    /// - Ignores non-text frames (e.g. binary, ping/pong)
-    /// - Propagates errors via `AsyncThrowingStream`
-    ///
-    /// The stream will continue indefinitely until:
-    /// - The WebSocket connection fails
-    /// - `disconnect()` is called
-    /// - The consumer stops iterating
-    ///
-    /// - Returns: An `AsyncThrowingStream<String, Error>` emitting raw text messages.
+
     func stream() -> AsyncThrowingStream<String, Error> {
-        
         AsyncThrowingStream { continuation in
-            
-            let startTime = Date()
-            var lastEmitTime: Date = .distantPast
-            /// Internal recursive receive loop.
-            /// Continuously calls `socketTask?.receive` to listen for new messages.
-            func receive() {
+
+            func receiveNext() {
                 socketTask?.receive { result in
                     switch result {
                     case .failure(let error):
-                        /// If the WebSocket fails, terminate the stream with error.
                         continuation.finish(throwing: error)
+
                     case .success(let message):
-                        switch message {
-                        case .string(let text):
-                            let now = Date()
-                            let elapsed = now.timeIntervalSince(startTime)
-                            
-                            if elapsed < 5 {
-                                continuation.yield(text)
-                            }
-                                                        
-                            else if now.timeIntervalSince(lastEmitTime) >= 10 {
-                                lastEmitTime = now
-                                continuation.yield(text)
-                            }
-                        default:
-                            /// Ignore unsupported message types (binary, pong, etc.)
-                            break
+                        if case .string(let text) = message {
+                            continuation.yield(text)
                         }
-                        /// Continue listening for the next message.
-                        receive()
+                        receiveNext()
                     }
                 }
             }
-            /// Start the receive loop immediately when stream is created.
-            receive()
+
+            receiveNext()
         }
     }
 }

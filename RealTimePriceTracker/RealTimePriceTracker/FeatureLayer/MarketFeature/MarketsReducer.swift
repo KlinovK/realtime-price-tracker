@@ -18,6 +18,8 @@ import Foundation
 ///
 /// Architecture flow:
 /// WebSocket → MarketsService → MarketsReducer → MarketsState → SwiftUI
+
+
 struct MarketsReducer: ReducerProtocol {
 
     // MARK: - Dependencies
@@ -25,7 +27,12 @@ struct MarketsReducer: ReducerProtocol {
     /// Service responsible for WebSocket streaming.
     ///
     /// In production, this should be dependency injected for testability.
-    private let service = MarketsService()
+    
+    private let service: MarketsServiceProtocol
+    
+    init(service: MarketsServiceProtocol = MarketsService()) {
+          self.service = service
+    }
 
     // MARK: - Reducer
 

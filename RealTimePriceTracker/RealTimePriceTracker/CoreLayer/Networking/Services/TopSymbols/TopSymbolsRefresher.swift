@@ -14,31 +14,34 @@ final class TopSymbolsRefresher {
 
     // MARK: - Properties
 
-    private let service = TopSymbolsService()
+    private let service: TopSymbolsServiceProtocol
+    private let refreshIntervalNanoseconds: UInt64
+
+    // MARK: - Init
+
+    init(
+        service: TopSymbolsServiceProtocol = TopSymbolsService(),
+        refreshIntervalNanoseconds: UInt64 = 60_000_000_000
+    ) {
+        self.service = service
+        self.refreshIntervalNanoseconds = refreshIntervalNanoseconds
+    }
 
     // MARK: - Public API
-
-    /// Starts a continuous stream of top symbols.
-    ///
-    /// - Returns: AsyncStream emitting updated symbol arrays every 60 seconds.
     func stream() -> AsyncStream<[String]> {
-
         AsyncStream { continuation in
-
-            Task {
-
+            let task = Task {
                 while !Task.isCancelled {
-
                     let symbols = await service.fetchTopSymbols()
                     let top100 = Array(symbols.prefix(100))
                     continuation.yield(top100)
-
-                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    try? await Task.sleep(
+                        nanoseconds: refreshIntervalNanoseconds
+                    )
                 }
             }
-
             continuation.onTermination = { _ in
-                continuation.finish()
+                task.cancel()
             }
         }
     }

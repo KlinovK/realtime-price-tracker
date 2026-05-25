@@ -14,54 +14,82 @@ import Foundation
 /// - Streams incoming websocket messages
 /// - Handles websocket lifecycle management
 /// - Exposes a unified async stream interface
-@MainActor
-final class MarketsService {
+///
+///
+protocol MarketsServiceProtocol {
+    func startStreaming(
+        with urls: [URL]
+    ) -> AsyncStream<MarketsAction>
+    func stopStreaming()
+}
+
+final class MarketsService: MarketsServiceProtocol {
 
     // MARK: - Properties
 
-    /// Active websocket connections.
-    private var sockets: [WebSocketClient] = []
+    private var sockets: [any WebSocketClientProtocol] = []
 
-    // MARK: - Public Methods
+    private let socketFactory: (URL) -> any WebSocketClientProtocol
 
-    /// Stops all active websocket streams.
+    // MARK: - Init
+
+    init(
+        socketFactory: @escaping (URL) -> any WebSocketClientProtocol
+    ) {
+        self.socketFactory = socketFactory
+    }
+
+    convenience init() {
+        self.init(socketFactory: Self.makeDefaultSocket)
+    }
+
+    // MARK: - Default socket
+
+    private static func makeDefaultSocket(
+        url: URL
+    ) -> any WebSocketClientProtocol {
+        WebSocketClient(url: url)
+    }
+
+    // MARK: - Public API
+
     func stopStreaming() {
+
         sockets.forEach { $0.disconnect() }
         sockets.removeAll()
     }
 
-    /// Starts streaming market data from websocket URLs.
-    ///
-    /// - Parameter urls:
-    ///   Websocket endpoint URLs.
-    ///
-    /// - Returns:
-    ///   Stream of `MarketsAction` events.
     func startStreaming(
         with urls: [URL]
     ) -> AsyncStream<MarketsAction> {
 
-        AsyncStream { continuation in
-            sockets = urls.map(WebSocketClient.init)
+        AsyncStream<MarketsAction> { continuation in
+
+            let sockets = urls.map(socketFactory)
+
+            Task { @MainActor in
+                self.sockets = sockets
+            }
+
             for socket in sockets {
+
                 Task {
+
                     socket.connect()
+
                     do {
                         for try await message in socket.stream() {
-                            continuation.yield(
-                                .websocketMessage(message)
-                            )
+                            continuation.yield(.websocketMessage(message))
                         }
                     } catch {
-                        continuation.yield(
-                            .websocketFailed(error)
-                        )
+                        continuation.yield(.websocketFailed(error))
                     }
                 }
             }
-            continuation.onTermination = { [self] _ in
+
+            continuation.onTermination = { [sockets] _ in
                 Task { @MainActor in
-                    stopStreaming()
+                    sockets.forEach { $0.disconnect() }
                 }
             }
         }
