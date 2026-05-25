@@ -65,22 +65,43 @@ final class WebSocketClient: WebSocketClientProtocol {
 
     func stream() -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
+            let startTime = Date()
+            var lastEmitTime: Date = .distantPast
+            let task = socketTask
+            
+            continuation.onTermination = { _ in
+                task?.cancel()
+            }
 
             func receiveNext() {
-                socketTask?.receive { result in
+                guard continuation.onTermination != nil else { return }
+                task?.receive { result in
                     switch result {
                     case .failure(let error):
                         continuation.finish(throwing: error)
-
                     case .success(let message):
+
                         if case .string(let text) = message {
-                            continuation.yield(text)
+                            let now = Date()
+                            let elapsed = now.timeIntervalSince(startTime)
+                            let shouldEmit: Bool
+                            if elapsed < 5 {
+                                shouldEmit = true
+                            } else if now.timeIntervalSince(lastEmitTime) >= 10 {
+                                shouldEmit = true
+                            } else {
+                                shouldEmit = false
+                            }
+                            
+                            if shouldEmit {
+                                lastEmitTime = now
+                                continuation.yield(text)
+                            }
                         }
                         receiveNext()
                     }
                 }
             }
-
             receiveNext()
         }
     }
