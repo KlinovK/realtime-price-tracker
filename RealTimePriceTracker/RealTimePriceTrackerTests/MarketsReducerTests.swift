@@ -15,7 +15,7 @@ final class MarketsReducerTests: XCTestCase {
     func test_onAppear_startsStreaming_andInitializesStreams() async {
 
         let service = MockMarketsService()
-        var reducer = MarketsReducer(service: service)
+        let reducer = MarketsReducer(service: service)
         var state = MarketsState(
             assets: [],
             isLoading: false,

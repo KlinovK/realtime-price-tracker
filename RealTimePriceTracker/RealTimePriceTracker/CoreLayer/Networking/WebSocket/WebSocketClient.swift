@@ -20,7 +20,9 @@ import Foundation
 protocol WebSocketTasking: AnyObject {
     func resume()
     func cancel()
-    func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void)
+    func receive(
+        completionHandler: @Sendable @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void
+    )
 
 }
 

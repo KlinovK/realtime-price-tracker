@@ -34,21 +34,11 @@ final class MarketsService: MarketsServiceProtocol {
     // MARK: - Init
 
     init(
-        socketFactory: @escaping (URL) -> any WebSocketClientProtocol
+        socketFactory: @escaping (URL) -> any WebSocketClientProtocol = {
+            WebSocketClient(url: $0)
+        }
     ) {
         self.socketFactory = socketFactory
-    }
-
-    convenience init() {
-        self.init(socketFactory: Self.makeDefaultSocket)
-    }
-
-    // MARK: - Default socket
-
-    private static func makeDefaultSocket(
-        url: URL
-    ) -> any WebSocketClientProtocol {
-        WebSocketClient(url: url)
     }
 
     // MARK: - Public API
