@@ -49,26 +49,32 @@ final class MockWebSocketClient: WebSocketClientProtocol {
     }
 }
 
+@MainActor
 final class MarketsServiceTests: XCTestCase {
     
     func test_startStreaming_createsSockets_andConnects() async {
         let mock1 = MockWebSocketClient()
         let mock2 = MockWebSocketClient()
-        
-        let service = MarketsService(socketFactory: { _ in
-            if mock1.connectCallCount == 0 { return mock1 }
-            return mock2
+
+        let urls = [
+            URL(string: "wss://1")!,
+            URL(string: "wss://2")!
+        ]
+
+        let service = MarketsService(socketFactory: { url in
+            switch url {
+            case urls[0]: return mock1
+            case urls[1]: return mock2
+            default: fatalError("unexpected url")
+            }
         })
-        
-        let urls = [URL(string: "wss://1")!, URL(string: "wss://2")!]
-        
+
         let stream = service.startStreaming(with: urls)
-        
-        // consume once to trigger tasks
+
         _ = stream.makeAsyncIterator()
-        
-        try? await Task.sleep(nanoseconds: 200_000_000)
-        
+
+        await Task.yield()
+
         XCTAssertEqual(mock1.connectCallCount, 1)
         XCTAssertEqual(mock2.connectCallCount, 1)
     }

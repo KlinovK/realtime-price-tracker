@@ -70,7 +70,9 @@ final class WebSocketClient: WebSocketClientProtocol {
             let task = socketTask
             
             continuation.onTermination = { _ in
-                task?.cancel()
+                Task { @MainActor in
+                    task?.cancel()
+                }
             }
 
             func receiveNext() {
