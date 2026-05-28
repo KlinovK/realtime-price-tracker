@@ -4,6 +4,8 @@ A modern real-time price tracking application built with **SwiftUI**, **WebSocke
 
 The project follows a **custom TCA-inspired architecture** for predictable state management and scalable feature development, while maintaining high performance and testability.
 
+[Watch Demo](https://github.com/KlinovK/realtime-price-tracker/blob/main/demo.mp4) 
+
 ---
 
 ## Features
