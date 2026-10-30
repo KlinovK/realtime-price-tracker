@@ -10,23 +10,25 @@ The project follows a **custom TCA-inspired architecture** for predictable state
 
 ## Features
 
-- ⚡ Real-time price updates using WebSockets
-- 📈 Live market/asset tracking
+- 💾 Offline-first CoinGecko Top 100 backed by SwiftData
+- ⭐ SwiftData favorite collection with persisted Binance realtime updates
+- 📈 Offline-cached seven-day detail charts built with Swift Charts
+- 🔄 Typed loading, stale, error, retry, and rate-limit states
 - 🧠 Custom TCA-inspired architecture
-- 🧵 Modern Swift Concurrency (`async/await`)
+- 🧵 Swift 6 strict concurrency, actors, clocks, and task groups
+- 👁 SwiftData `@Query` UI observation with no Combine dependency
 - 📱 Built entirely with SwiftUI
-- 🛠 Modular and scalable codebase
-- 🚀 High-performance real-time communication
 
 ---
 
 ## Tech Stack
 
-- **Language:** Swift
-- **UI Framework:** SwiftUI
+- **Language:** Swift 6
+- **UI Framework:** SwiftUI, Swift Charts, Observation
+- **Persistence:** SwiftData model actor with transactional batch writes
 - **Architecture:** Custom TCA (The Composable Architecture inspired)
-- **Networking:** WebSockets
-- **Concurrency:** Async/Await & Structured Concurrency
+- **Networking:** Async URLSession and WebSockets
+- **Concurrency:** Actors, async/await, structured task groups, injected clocks
 - **Testing:** XCTest
 - **Platform:** iOS
 
@@ -36,14 +38,21 @@ The project follows a **custom TCA-inspired architecture** for predictable state
 
 The application uses a custom implementation inspired by **The Composable Architecture (TCA)** principles:
 
-- Single source of truth
+- SwiftData as the only UI-facing data source of truth
 - Unidirectional data flow
 - Reducer-based state updates
 - Dependency injection
 - Predictable side effects
 - Testable business logic
 
-This structure makes the app highly maintainable and scalable for real-time systems.
+This structure keeps state transitions synchronous while effects own asynchronous
+HTTP, WebSocket, persistence, clock, and cancellation work. Reducers contain only
+transient orchestration state; screens query persisted assets, favorites, and chart
+points directly.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the module map, end-to-end data flow,
+connection state machine, Swift concurrency ownership, confirmed bottlenecks, and
+the prioritized refactoring roadmap.
 
 ---
 
@@ -59,7 +68,7 @@ cd realtime-price-tracker
 Open the project in Xcode:
 
 ```bash
-open realtime-price-tracker.xcodeproj
+open RealTimePriceTracker/RealTimePriceTracker.xcodeproj
 ```
 
 Run the app on simulator or device.
@@ -68,22 +77,31 @@ Run the app on simulator or device.
 
 ## Requirements
 
-- Xcode 15+
-- iOS 17+
-- Swift 5.9+
+- Xcode with the iOS 26.2 SDK
+- iOS 26.2 (current project deployment target)
+- Swift 6 language mode with complete strict-concurrency checking
 
 ---
 
-## Real-Time Updates
+## Data sources and update frequency
 
-The app connects to live data streams using WebSockets, enabling:
+- CoinGecko supplies market-cap-ranked snapshots and seven-day chart data, which
+  are committed atomically before UI observes them.
+- The Top 100 refreshes every ten minutes while the app is active.
+- Binance WebSockets supply realtime favorite prices. Latest values are coalesced
+  for roughly 150 ms and each batch is saved to SwiftData in one transaction.
+- CoinGecko snapshots remain visible when no matching Binance USDT pair is live.
 
-- Instant price updates
+The realtime pipeline provides:
+
+- Offline rows available immediately on cold launch
+- Latest-value persistence batches approximately every 150 ms
 - Low-latency communication
-- Efficient streaming
+- Per-symbol coalescing before UI updates
 - Reactive UI synchronization
 
-Swift concurrency ensures smooth async data handling without callback complexity.
+Actor-owned sockets, structured task groups, injected clocks, and cancellation
+handlers keep transport work isolated and testable.
 
 ---
 
@@ -103,20 +121,30 @@ Run tests with:
 ⌘ + U
 ```
 
-or:
+Or, from the repository root with an iPhone 17 Pro running iOS 26.5 available:
 
 ```bash
-xcodebuild test
+xcodebuild test \
+  -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
+  -scheme RealTimePriceTracker \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+  -derivedDataPath /private/tmp/rpt-stabilization-derived \
+  -parallel-testing-enabled NO \
+  -quiet \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
 ---
 
 ## Future Improvements
 
-- [ ] Multiple exchange support
-- [ ] Historical charting
+- [ ] Explicit CoinGecko-to-exchange pair mapping
+- [ ] Authenticated CoinGecko configuration and quota-aware backoff
+- [ ] 24h, 30d, and 1y chart ranges
+- [ ] Search and sorting for the Top 100
+- [ ] SwiftData/CloudKit synchronization
 - [ ] Push notifications
-- [ ] Offline persistence
+- [ ] Offline image byte cache
 - [ ] Widget support
 - [ ] macOS/iPadOS support
 

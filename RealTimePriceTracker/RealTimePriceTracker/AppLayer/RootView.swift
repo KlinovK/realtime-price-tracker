@@ -2,41 +2,44 @@
 //  RootView.swift
 //  RealTimePriceTracker
 //
-//  Created by Константин Клинов on 19/05/26.
-//
 
 import SwiftUI
 
-/// The root container view of the application.
+/// Owns the single application store and presents the two feature tabs.
 ///
-/// `RootView` is responsible for:
-/// - Creating and owning the application's main state store
-/// - Managing the lifecycle of the shared store instance
-/// - Injecting the store into the feature hierarchy
-///
-/// The store is initialized once using `@StateObject`,
-/// ensuring it persists across SwiftUI view updates.
+/// Swift Observation tracks only `Store.state`; no Combine publisher is involved.
+/// Scene lifecycle events are actions, allowing reducers to cancel polling,
+/// WebSockets, freshness deadlines, and reconnect delays in the background.
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
 
-    // MARK: - Properties
+    let store: Store<AppReducer>
 
-    /// Centralized state store for market-related features.
-    ///
-    /// The store manages:
-    /// - `MarketsState` as the source of truth
-    /// - `MarketsReducer` for handling state transitions
-    @StateObject
-    private var store = Store(
-        initialState: MarketsState(),
-        reducer: MarketsReducer()
-    )
-
-    // MARK: - Body
-
-    /// The primary content displayed by the application.
-    ///
-    /// Passes the shared store into `MarketsView`.
     var body: some View {
-        MarketsView(store: store)
+        TabView {
+            Tab("Favorites", systemImage: "star.fill") {
+                MarketsView(store: store)
+            }
+
+            Tab("Top 100", systemImage: "chart.bar.fill") {
+                TopAssetsView(store: store)
+            }
+        }
+        .preferredColorScheme(.dark)
+        .task {
+            store.send(.appBecameActive)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                store.send(.appBecameActive)
+            case .background:
+                store.send(.appEnteredBackground)
+            case .inactive:
+                break
+            @unknown default:
+                break
+            }
+        }
     }
 }

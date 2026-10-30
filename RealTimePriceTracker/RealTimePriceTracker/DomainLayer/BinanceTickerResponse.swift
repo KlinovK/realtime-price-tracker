@@ -7,7 +7,11 @@
 
 import Foundation
 
-struct BinanceTickerResponse: Codable {
+/// Minimal subset of a Binance realtime ticker used by the application.
+///
+/// Prices remain strings at the transport boundary because the exchange sends JSON
+/// strings. The batching actor parses them with a fixed POSIX locale into `Decimal`.
+nonisolated struct BinanceTickerResponse: Codable, Sendable {
     let symbol: String
     let price: String
     let changePercent: String

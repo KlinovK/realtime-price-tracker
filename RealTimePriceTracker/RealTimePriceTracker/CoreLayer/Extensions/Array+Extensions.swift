@@ -26,7 +26,7 @@ extension Array {
     ///
     /// - Returns:
     ///   A two-dimensional array containing chunked elements.
-    func chunked(into size: Int) -> [[Element]] {
+    nonisolated func chunked(into size: Int) -> [[Element]] {
 
         guard size > 0 else { return [] }
 

@@ -18,6 +18,10 @@ import SwiftUI
 /// - Neutral → muted green
 /// - Positive → stronger greens
 /// - Strong positive → bright green
+///
+/// - Note: Bucket thresholds are presentation policy, not market-domain logic. Keep
+///   them centralized here and cover any product-driven threshold changes with
+///   snapshot or bucket tests.
 enum HeatColor {
 
     // MARK: - Public API
@@ -32,7 +36,7 @@ enum HeatColor {
         case brightGreen
     }
 
-    static func bucket(for change: Double) -> Bucket {
+    static func bucket(for change: Decimal) -> Bucket {
         switch change {
         case ..<(-10):
             return .deepRed
@@ -67,7 +71,7 @@ enum HeatColor {
     ///
     /// - Returns:
     ///   A SwiftUI `Color` representing intensity of movement.
-    static func color(for change: Double) -> Color {
+    static func color(for change: Decimal) -> Color {
         switch bucket(for: change) {
         case .deepRed:
             return Self.deepRed

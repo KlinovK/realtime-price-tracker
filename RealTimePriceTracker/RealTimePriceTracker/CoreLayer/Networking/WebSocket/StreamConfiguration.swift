@@ -15,7 +15,7 @@ import Foundation
 ///
 /// This configuration is used by `EndpointFactory` to generate
 /// valid combined WebSocket URLs.
-struct StreamConfiguration {
+nonisolated struct StreamConfiguration: Sendable {
 
     /// List of Binance trading symbols (e.g. `["BTCUSDT", "ETHUSDT"]`).
     let symbols: [String]
@@ -30,7 +30,7 @@ struct StreamConfiguration {
     // MARK: - Stream Type
 
     /// Supported Binance WebSocket stream types.
-    enum StreamType: String {
+    nonisolated enum StreamType: String, Sendable {
 
         /// Full 24h ticker stream with detailed market data.
         case ticker = "@ticker"

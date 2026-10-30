@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+/// Shared application background token for the current visual theme.
 enum ThemeBackground {
 
     static let background = LinearGradient(

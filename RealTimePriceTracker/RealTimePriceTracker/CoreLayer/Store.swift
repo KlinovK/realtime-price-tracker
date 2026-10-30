@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import Combine
+import Observation
 
 /// A lightweight, custom implementation of a TCA-like state store.
 ///
@@ -15,41 +15,46 @@ import Combine
 /// - Processing user and system actions (`Action`)
 /// - Running reducer logic to compute state changes
 /// - Executing asynchronous side effects (`Effect`)
-/// - Bridging state updates back to SwiftUI via `@Published`
+/// - Bridging state updates back to SwiftUI via Swift Observation
 ///
 /// This implementation is designed for:
 /// - SwiftUI apps
 /// - Realtime systems (e.g. WebSockets, crypto tickers)
 /// - Swift Concurrency (async/await + Task-based effects)
 ///
-/// ⚠️ Note:
-/// All state mutations and action handling occur on the `MainActor`
-/// to ensure UI consistency.
+/// - Important: All state mutations and action handling occur on `MainActor` to
+///   keep the observable state consistent with SwiftUI.
+/// - Warning: Effect tasks are created by this main-actor store. Dependencies that
+///   perform CPU-heavy parsing or long-running loops should provide their own actor
+///   isolation instead of doing that work in the store's execution context.
 @MainActor
-final class Store<R: ReducerProtocol>: ObservableObject {
+@Observable
+final class Store<R: ReducerProtocol> {
 
     // MARK: - Published State
 
     /// The single source of truth for the application state.
     ///
     /// Any updates to this property will automatically trigger SwiftUI view updates.
-    @Published
     private(set) var state: R.State
 
     // MARK: - Dependencies
 
     /// The reducer responsible for handling actions and producing new state + effects.
+    @ObservationIgnored
     private let reducer: R
 
     // MARK: - Task Management
 
-    /// Keeps references to running asynchronous tasks created by effects.
-    ///
-    /// This prevents premature deallocation of background work such as:
-    /// - WebSocket streams
-    /// - network requests
-    /// - long-running async operations
-    private var tasks: [Task<Void, Never>] = []
+    private struct ManagedTask {
+        let token: UUID
+        let task: Task<Void, Never>
+    }
+
+    /// One task per effect identity. Starting another task with the same ID
+    /// cancels and replaces the previous task.
+    @ObservationIgnored
+    private var tasks: [EffectCancellationID: ManagedTask] = [:]
 
     // MARK: - Initialization
 
@@ -78,25 +83,26 @@ final class Store<R: ReducerProtocol>: ObservableObject {
     /// 5. Execute side effects (if any)
     ///
     /// - Parameter action: The action to process.
+    /// - Important: Reduction always finishes before an effect starts. This keeps
+    ///   the state transition synchronous even when the effect immediately emits.
     func send(_ action: R.Action) {
+        /// Local mutable copy passed into reducer for deterministic updates.
+        var currentState = state
 
-        Task {
+        /// Reducers run synchronously. Asynchronous work is represented by
+        /// the returned effect and feeds results back through new actions.
+        let effect = reducer.reduce(
+            state: &currentState,
+            action: action
+        )
 
-            /// Local mutable copy passed into reducer for deterministic updates
-            var currentState = self.state
-
-            /// Run reducer logic (may modify state + return effect)
-            let effect = await reducer.reduce(
-                state: &currentState,
-                action: action
-            )
-
-            /// Commit state update after reducer completes
-            self.state = currentState
-
-            /// Execute any side effects returned by reducer
-            handle(effect)
+        /// Publish only meaningful state changes.
+        if state != currentState {
+            state = currentState
         }
+
+        /// Execute any side effects returned by reducer.
+        handle(effect)
     }
 
     // MARK: - Effect Handling
@@ -107,6 +113,8 @@ final class Store<R: ReducerProtocol>: ObservableObject {
     /// - Do nothing (`.none`)
     /// - Run a single async operation (`.run`)
     /// - Produce a stream of actions (`.stream`)
+    /// - Merge independent effects (`.merge`)
+    /// - Cancel identified work (`.cancel`)
     ///
     /// - Parameter effect: The effect to execute.
     private func handle(_ effect: Effect<R.Action>) {
@@ -116,35 +124,58 @@ final class Store<R: ReducerProtocol>: ObservableObject {
         case .none:
             return
 
-        case .run(let operation):
+        case let .run(id, operation):
+
+            cancelTask(id: id)
+            let token = UUID()
 
             /// Executes a single asynchronous operation that may emit an action.
-            let task = Task {
+            let task = Task { [weak self] in
+                defer { self?.finishTask(id: id, token: token) }
 
                 if let action = await operation() {
-                    await MainActor.run {
-                        self.send(action)
-                    }
+                    guard !Task.isCancelled else { return }
+                    self?.send(action)
                 }
             }
 
-            tasks.append(task)
+            tasks[id] = ManagedTask(token: token, task: task)
 
-        case .stream(let operation):
+        case let .stream(id, operation):
+
+            cancelTask(id: id)
+            let token = UUID()
 
             /// Executes a continuous stream of actions (e.g. WebSocket updates).
-            let task = Task {
+            let task = Task { [weak self] in
+                defer { self?.finishTask(id: id, token: token) }
 
                 let stream = operation()
 
                 for await action in stream {
-                    await MainActor.run {
-                        self.send(action)
-                    }
+                    guard !Task.isCancelled else { break }
+                    self?.send(action)
                 }
             }
 
-            tasks.append(task)
+            tasks[id] = ManagedTask(token: token, task: task)
+
+        case .merge(let effects):
+            for effect in effects {
+                handle(effect)
+            }
+
+        case let .cancel(id):
+            cancelTask(id: id)
         }
+    }
+
+    private func cancelTask(id: EffectCancellationID) {
+        tasks.removeValue(forKey: id)?.task.cancel()
+    }
+
+    private func finishTask(id: EffectCancellationID, token: UUID) {
+        guard tasks[id]?.token == token else { return }
+        tasks.removeValue(forKey: id)
     }
 }

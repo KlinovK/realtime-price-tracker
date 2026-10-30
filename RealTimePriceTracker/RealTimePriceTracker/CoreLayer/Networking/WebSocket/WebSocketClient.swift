@@ -16,26 +16,38 @@ import Foundation
 ///
 /// It is intentionally minimal and stateless aside from the active socket task.
 /// It is designed to be used inside service layers (e.g. `MarketsService`).
+///
+/// - Important: The actor owns exactly one active `URLSessionWebSocketTask`.
+///   Connecting again cancels and replaces that task, and terminating the message
+///   stream cancels its receive loop and disconnects the socket.
+/// - Note: Throttling does not belong here. The client forwards every text frame;
+///   downstream actor-owned batching decides how often state reaches the UI.
 
-protocol WebSocketTasking: AnyObject {
-    func resume()
-    func cancel()
-    func receive(
-        completionHandler: @Sendable @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void
-    )
-
+nonisolated protocol WebSocketTasking: AnyObject, Sendable {
+    func resume() async
+    func cancel() async
+    func receive() async throws -> URLSessionWebSocketTask.Message
 }
 
 extension URLSessionWebSocketTask: WebSocketTasking {}
 
-protocol WebSocketClientProtocol: AnyObject {
-    func connect()
-    func disconnect()
-    func stream() -> AsyncThrowingStream<String, Error>
-    typealias WebSocketTaskFactory = (URLSession, URL) -> WebSocketTasking
+nonisolated protocol WebSocketClientProtocol: Actor {
+    func connect() async
+    func disconnect() async
+    func stream() async -> AsyncThrowingStream<String, Error>
 }
 
-final class WebSocketClient: WebSocketClientProtocol {
+typealias WebSocketTaskFactory = @Sendable (
+    URLSession,
+    URL
+) -> any WebSocketTasking
+
+nonisolated enum WebSocketClientError: Error {
+    case notConnected
+}
+
+/// Actor-isolated owner of one URL session WebSocket task and its receive loop.
+actor WebSocketClient: WebSocketClientProtocol {
 
     private let url: URL
     private let session: URLSession
@@ -54,57 +66,65 @@ final class WebSocketClient: WebSocketClientProtocol {
         self.taskFactory = taskFactory
     }
 
-    func connect() {
-        socketTask = taskFactory(session, url)
-        socketTask?.resume()
+    func connect() async {
+        if let socketTask {
+            await socketTask.cancel()
+        }
+
+        let task = taskFactory(session, url)
+        socketTask = task
+        await task.resume()
     }
 
-    func disconnect() {
-        socketTask?.cancel()
+    func disconnect() async {
+        guard let task = socketTask else { return }
+        socketTask = nil
+        await task.cancel()
     }
 
-    func stream() -> AsyncThrowingStream<String, Error> {
+    func stream() async -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            let startTime = Date()
-            var lastEmitTime: Date = .distantPast
-            let task = socketTask
-            
-            continuation.onTermination = { _ in
-                Task { @MainActor in
-                    task?.cancel()
+            let receiveTask = Task { [weak self] in
+                guard let self else {
+                    continuation.finish()
+                    return
                 }
-            }
 
-            func receiveNext() {
-                guard continuation.onTermination != nil else { return }
-                task?.receive { result in
-                    switch result {
-                    case .failure(let error):
-                        continuation.finish(throwing: error)
-                    case .success(let message):
+                do {
+                    try await withTaskCancellationHandler {
+                        while !Task.isCancelled {
+                            let message = try await self.receive()
 
-                        if case .string(let text) = message {
-                            let now = Date()
-                            let elapsed = now.timeIntervalSince(startTime)
-                            let shouldEmit: Bool
-                            if elapsed < 5 {
-                                shouldEmit = true
-                            } else if now.timeIntervalSince(lastEmitTime) >= 10 {
-                                shouldEmit = true
-                            } else {
-                                shouldEmit = false
-                            }
-                            
-                            if shouldEmit {
-                                lastEmitTime = now
+                            guard !Task.isCancelled else { break }
+                            if case .string(let text) = message {
                                 continuation.yield(text)
                             }
                         }
-                        receiveNext()
+
+                        continuation.finish()
+                    } onCancel: {
+                        Task { [weak self] in
+                            await self?.disconnect()
+                        }
                     }
+                } catch is CancellationError {
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
             }
-            receiveNext()
+
+            continuation.onTermination = { _ in
+                receiveTask.cancel()
+            }
         }
+    }
+
+    private func receive() async throws -> URLSessionWebSocketTask.Message {
+        guard let socketTask else {
+            throw WebSocketClientError.notConnected
+        }
+
+        return try await socketTask.receive()
     }
 }
