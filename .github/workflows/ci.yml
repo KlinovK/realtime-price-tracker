@@ -14,7 +14,9 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Verify Xcode and simulator
         run: |
@@ -23,12 +25,69 @@ jobs:
             -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
             -scheme RealTimePriceTracker
 
+      - name: Prepare result bundle path
+        id: result_bundle
+        run: |
+          printf 'path=%s/RealTimePriceTracker-%s-%s.xcresult\n' \
+            "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
+
       - name: Run unit tests
+        id: tests
+        env:
+          RESULT_BUNDLE: ${{ steps.result_bundle.outputs.path }}
         run: |
           xcodebuild test \
             -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
             -scheme RealTimePriceTracker \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+            -resultBundlePath "$RESULT_BUNDLE" \
             -parallel-testing-enabled NO \
             -quiet \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Summarize test results
+        if: ${{ always() && steps.tests.outcome != 'skipped' }}
+        env:
+          RESULT_BUNDLE: ${{ steps.result_bundle.outputs.path }}
+          TEST_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          summary_json="$RUNNER_TEMP/xcode-test-summary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+
+          if [[ ! -d "$RESULT_BUNDLE" ]]; then
+            printf '### Xcode test results\n\nNo result bundle was generated.\n' >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$TEST_OUTCOME" == 'success' ]]; then exit 1; fi
+            exit 0
+          fi
+
+          if ! xcrun xcresulttool get test-results summary --path "$RESULT_BUNDLE" > "$summary_json"; then
+            printf '### Xcode test results\n\nTest summary extraction failed.\n' >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$TEST_OUTCOME" == 'success' ]]; then exit 1; fi
+            exit 0
+          fi
+
+          if ! jq -e '(.totalTestCount | type == "number") and
+                      (.passedTests | type == "number") and
+                      (.failedTests | type == "number") and
+                      (.skippedTests | type == "number")' "$summary_json" > /dev/null; then
+            printf '### Xcode test results\n\nTest counts were unavailable.\n' >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$TEST_OUTCOME" == 'success' ]]; then exit 1; fi
+            exit 0
+          fi
+
+          read -r total passed failed skipped < <(jq -r '[.totalTestCount, .passedTests, .failedTests, .skippedTests] | @tsv' "$summary_json")
+          printf 'Test results: total=%s passed=%s failed=%s skipped=%s\n' "$total" "$passed" "$failed" "$skipped"
+          {
+            printf '### Xcode test results\n\n'
+            printf '| Total | Passed | Failed | Skipped |\n'
+            printf '| ---: | ---: | ---: | ---: |\n'
+            printf '| %s | %s | %s | %s |\n' "$total" "$passed" "$failed" "$skipped"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Xcode result bundle
+        if: ${{ always() && steps.tests.outcome != 'skipped' && steps.result_bundle.outputs.path != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: xcode-test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.result_bundle.outputs.path }}
+          if-no-files-found: warn
+          retention-days: 14
