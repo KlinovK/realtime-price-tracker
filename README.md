@@ -123,8 +123,7 @@ xcodebuild test \
 
 ## Licensing
 
-No license has been selected or added to this repository yet. Licensing is pending
-the repository owner's decision.
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
