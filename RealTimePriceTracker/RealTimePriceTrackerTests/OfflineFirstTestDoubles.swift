@@ -49,6 +49,7 @@ actor MockMarketDataRepository: MarketDataRepositoryProtocol {
     private(set) var favoriteIDs: Set<String>
     private(set) var importedIDs: Set<String> = []
     private(set) var liveQuoteBatches: [[CryptoAsset]] = []
+    var liveQuoteError: (any Error)?
     var assetsByID: [String: CoinMarket]
 
     init(
@@ -59,6 +60,10 @@ actor MockMarketDataRepository: MarketDataRepositoryProtocol {
         self.assetsByID = Dictionary(
             uniqueKeysWithValues: assets.map { ($0.id, $0) }
         )
+    }
+
+    func setLiveQuoteError(_ error: any Error) {
+        liveQuoteError = error
     }
 
     func replaceTopAssets(_ assets: [CoinMarket], fetchedAt: Date) async throws {
@@ -93,8 +98,22 @@ actor MockMarketDataRepository: MarketDataRepositoryProtocol {
     func applyLiveQuotes(
         _ quotes: [CryptoAsset],
         subscriptions: [FavoriteAssetSubscription]
-    ) async throws {
+    ) async throws -> [String: LiveQuoteVersion] {
         liveQuoteBatches.append(quotes)
+        if let liveQuoteError { throw liveQuoteError }
+        let quotesByPair = Dictionary(
+            quotes.map { ($0.id.uppercased(), $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        return Dictionary(uniqueKeysWithValues: subscriptions.compactMap { subscription in
+            guard let quote = quotesByPair[subscription.binancePairID],
+                  let version = LiveQuoteVersion(
+                      price: quote.price,
+                      change24h: quote.change24h,
+                      updatedAt: quote.lastUpdated
+                  ) else { return nil }
+            return (subscription.coinGeckoID, version)
+        })
     }
 
     func importLegacyFavorites(_ coinGeckoIDs: Set<String>) async throws {
@@ -126,14 +145,15 @@ nonisolated final class MockLegacyFavoritesRepository:
 nonisolated func makeCoinMarket(
     id: String = "bitcoin",
     symbol: String = "btc",
-    rank: Int = 1
+    rank: Int = 1,
+    price: Decimal? = 100
 ) -> CoinMarket {
     CoinMarket(
         id: id,
         symbol: symbol,
         name: id.capitalized,
         imageURL: URL(string: "https://example.com/\(symbol).png"),
-        currentPrice: 100,
+        currentPrice: price,
         marketCap: 1_000,
         marketCapRank: rank,
         totalVolume: 500,

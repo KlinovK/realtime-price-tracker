@@ -5,6 +5,71 @@ import XCTest
 
 @MainActor
 final class MarketDataRepositoryTests: XCTestCase {
+    func test_newCommitEvidenceCannotLabelOldObservedQuoteLive() async throws {
+        let container = try makeContainer()
+        let repository = MarketDataRepository(modelContainer: container)
+        try await repository.replaceTopAssets([makeCoinMarket()], fetchedAt: .init(timeIntervalSince1970: 1))
+        try await repository.toggleFavorite(coinGeckoID: "bitcoin")
+        let subscriptions = try await repository.favoriteSubscriptions()
+        _ = try await repository.applyLiveQuotes(
+            [CryptoAsset(id: "BTCUSDT", symbol: "BTCUSDT", price: 110,
+                         change24h: 1, lastUpdated: .init(timeIntervalSince1970: 10))],
+            subscriptions: subscriptions
+        )
+
+        // The view context has observed A. Hold that observation while the
+        // repository actor commits B and its event reaches the reducer.
+        let viewContext = ModelContext(container)
+        let observed = try XCTUnwrap(viewContext.fetch(FetchDescriptor<AssetRecord>()).first)
+        let observedPrice = observed.livePrice
+        let observedChange = observed.liveChange24h
+        let observedAt = observed.liveUpdatedAt
+        XCTAssertEqual(observedPrice, 110)
+
+        let committed = try await repository.applyLiveQuotes(
+            [CryptoAsset(id: "BTCUSDT", symbol: "BTCUSDT", price: 120,
+                         change24h: 2, lastUpdated: .init(timeIntervalSince1970: 20))],
+            subscriptions: subscriptions
+        )
+        XCTAssertEqual(observed.livePrice, 110)
+        var state = MarketsState(connection: .connecting, subscriptions: subscriptions)
+        let reducer = MarketsReducer(syncService: MockLivePricesSyncService())
+        _ = reducer.reduce(
+            state: &state,
+            action: .syncEvent(
+                generation: state.generation,
+                .batchCommitted(lastEventAt: .init(timeIntervalSince1970: 20), versions: committed)
+            )
+        )
+
+        let presentation = FavoritePricePresentation(
+            snapshotPrice: observed.snapshotPrice,
+            snapshotChange24h: observed.snapshotChange24h,
+            livePrice: observedPrice,
+            liveChange24h: observedChange,
+            liveUpdatedAt: observedAt,
+            committedVersion: state.committedQuoteVersions["bitcoin"],
+            connection: state.connection
+        )
+        XCTAssertEqual(observedAt, .init(timeIntervalSince1970: 10))
+        XCTAssertEqual(presentation.price, 100)
+        XCTAssertEqual(presentation.status, .snapshot)
+        let updated = try XCTUnwrap(
+            ModelContext(container).fetch(FetchDescriptor<AssetRecord>()).first
+        )
+        let matching = FavoritePricePresentation(
+            snapshotPrice: updated.snapshotPrice,
+            snapshotChange24h: updated.snapshotChange24h,
+            livePrice: updated.livePrice,
+            liveChange24h: updated.liveChange24h,
+            liveUpdatedAt: updated.liveUpdatedAt,
+            committedVersion: state.committedQuoteVersions["bitcoin"],
+            connection: state.connection
+        )
+        XCTAssertEqual(matching.price, 120)
+        XCTAssertEqual(matching.status, .live)
+    }
+
     func test_coinGeckoFavoriteAndBinanceFlowCommitsIntoOneAssetRecord() async throws {
         let container = try makeContainer()
         let repository = MarketDataRepository(modelContainer: container)
@@ -17,7 +82,7 @@ final class MarketDataRepositoryTests: XCTestCase {
         )
         try await repository.toggleFavorite(coinGeckoID: "bitcoin")
         let subscriptions = try await repository.favoriteSubscriptions()
-        try await repository.applyLiveQuotes(
+        let committed = try await repository.applyLiveQuotes(
             [
                 CryptoAsset(
                     id: "BTCUSDT",
@@ -29,6 +94,7 @@ final class MarketDataRepositoryTests: XCTestCase {
             ],
             subscriptions: subscriptions
         )
+        XCTAssertEqual(Set(committed.keys), ["bitcoin"])
 
         let context = ModelContext(container)
         let assets = try context.fetch(FetchDescriptor<AssetRecord>())
@@ -88,7 +154,7 @@ final class MarketDataRepositoryTests: XCTestCase {
         try await repository.toggleFavorite(coinGeckoID: "asset-two")
         let subscriptions = try await repository.favoriteSubscriptions()
 
-        try await repository.applyLiveQuotes(
+        let committed = try await repository.applyLiveQuotes(
             [
                 CryptoAsset(
                     id: "SAMEUSDT",
@@ -99,10 +165,105 @@ final class MarketDataRepositoryTests: XCTestCase {
             ],
             subscriptions: subscriptions
         )
+        XCTAssertTrue(committed.isEmpty)
 
         let context = ModelContext(container)
         let assets = try context.fetch(FetchDescriptor<AssetRecord>())
         XCTAssertTrue(assets.allSatisfy { $0.livePrice == nil })
+    }
+
+    func test_newSnapshotSupersedesOldQuoteWithoutErasingUnreplacedFavorite() async throws {
+        let container = try makeContainer()
+        let repository = MarketDataRepository(modelContainer: container)
+        try await repository.replaceTopAssets(
+            [makeCoinMarket(), makeCoinMarket(id: "ethereum", symbol: "eth", rank: 2)],
+            fetchedAt: Date(timeIntervalSince1970: 100)
+        )
+        try await repository.toggleFavorite(coinGeckoID: "bitcoin")
+        try await repository.toggleFavorite(coinGeckoID: "ethereum")
+        let subscriptions = try await repository.favoriteSubscriptions()
+        _ = try await repository.applyLiveQuotes(
+            [
+                CryptoAsset(id: "BTCUSDT", symbol: "BTCUSDT", price: 110, change24h: 3),
+                CryptoAsset(id: "ETHUSDT", symbol: "ETHUSDT", price: 210, change24h: 3)
+            ],
+            subscriptions: subscriptions
+        )
+
+        try await repository.replaceTopAssets(
+            [makeCoinMarket()],
+            fetchedAt: Date(timeIntervalSince1970: 200)
+        )
+
+        let records = try ModelContext(container).fetch(FetchDescriptor<AssetRecord>())
+        let byID = Dictionary(uniqueKeysWithValues: records.map { ($0.coinGeckoID, $0) })
+        XCTAssertEqual(byID["bitcoin"]?.snapshotPrice, 100)
+        XCTAssertNil(byID["bitcoin"]?.livePrice)
+        XCTAssertEqual(byID["ethereum"]?.livePrice, 210)
+        XCTAssertEqual(byID["ethereum"]?.isTopAsset, false)
+    }
+
+    func test_repeatedQuotesUseArrivalOrderRatherThanWallClock() async throws {
+        let container = try makeContainer()
+        let repository = MarketDataRepository(modelContainer: container)
+        try await repository.replaceTopAssets(
+            [makeCoinMarket()], fetchedAt: Date(timeIntervalSince1970: 100)
+        )
+        try await repository.toggleFavorite(coinGeckoID: "bitcoin")
+        let subscriptions = try await repository.favoriteSubscriptions()
+        let committed = try await repository.applyLiveQuotes(
+            [
+                CryptoAsset(
+                    id: "BTCUSDT", symbol: "BTCUSDT", price: 110,
+                    change24h: 1, lastUpdated: Date(timeIntervalSince1970: 300)
+                ),
+                CryptoAsset(
+                    id: "BTCUSDT", symbol: "BTCUSDT", price: 120,
+                    change24h: 2, lastUpdated: Date(timeIntervalSince1970: 200)
+                )
+            ],
+            subscriptions: subscriptions
+        )
+        XCTAssertEqual(Set(committed.keys), ["bitcoin"])
+        let record = try XCTUnwrap(
+            ModelContext(container).fetch(FetchDescriptor<AssetRecord>()).first
+        )
+        XCTAssertEqual(record.livePrice, 120)
+    }
+
+    func test_snapshotWithoutPricePreservesCachedQuote() async throws {
+        let container = try makeContainer()
+        let repository = MarketDataRepository(modelContainer: container)
+        try await repository.replaceTopAssets([makeCoinMarket()], fetchedAt: .now)
+        try await repository.toggleFavorite(coinGeckoID: "bitcoin")
+        let subscriptions = try await repository.favoriteSubscriptions()
+        _ = try await repository.applyLiveQuotes(
+            [CryptoAsset(id: "BTCUSDT", symbol: "BTCUSDT", price: 110, change24h: 3)],
+            subscriptions: subscriptions
+        )
+
+        try await repository.replaceTopAssets(
+            [makeCoinMarket(price: nil)], fetchedAt: .now
+        )
+        let record = try XCTUnwrap(
+            ModelContext(container).fetch(FetchDescriptor<AssetRecord>()).first
+        )
+        XCTAssertNil(record.snapshotPrice)
+        XCTAssertEqual(record.livePrice, 110)
+    }
+
+    func test_emptySnapshotFailurePreservesPreviouslyCommittedRecord() async throws {
+        let container = try makeContainer()
+        let repository = MarketDataRepository(modelContainer: container)
+        try await repository.replaceTopAssets([makeCoinMarket()], fetchedAt: .now)
+        do {
+            try await repository.replaceTopAssets([], fetchedAt: .now)
+            XCTFail("Expected empty snapshot to fail")
+        } catch MarketDataRepositoryError.emptySnapshot {
+            let records = try ModelContext(container).fetch(FetchDescriptor<AssetRecord>())
+            XCTAssertEqual(records.count, 1)
+            XCTAssertEqual(records.first?.snapshotPrice, 100)
+        }
     }
 
     func test_chartReplacementDoesNotExposeMixedOldAndNewSamples() async throws {

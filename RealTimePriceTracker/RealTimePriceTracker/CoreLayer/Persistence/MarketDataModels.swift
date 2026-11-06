@@ -62,14 +62,6 @@ final class AssetRecord {
         self.liveChange24h = liveChange24h
         self.liveUpdatedAt = liveUpdatedAt
     }
-
-    var favoritePrice: Decimal? {
-        livePrice ?? snapshotPrice
-    }
-
-    var favoriteChange24h: Decimal {
-        liveChange24h ?? snapshotChange24h ?? .zero
-    }
 }
 
 /// Favorites are normalized separately so a selection survives even when an

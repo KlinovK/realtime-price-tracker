@@ -147,6 +147,10 @@ nonisolated struct MarketsReconnectPolicy: Equatable, Sendable {
 /// SwiftData and are never copied into reducer state.
 nonisolated struct MarketsState: Equatable {
     var connection: MarketsConnectionState = .idle
+    /// Changes whenever the stream is replaced or invalidated.
+    var generation = 0
+    /// Receipts for quotes saved during the active stream generation.
+    var committedQuoteVersions: [String: LiveQuoteVersion] = [:]
     /// Tracks transport freshness independently from price changes.
     /// An unchanged ticker event still proves that the stream is alive.
     var lastEventAt: Date?

@@ -9,6 +9,10 @@ final class MarketsReducerTests: XCTestCase {
         binancePairID: "BTCUSDT"
     )
 
+    private func version(at date: Date) -> LiveQuoteVersion {
+        LiveQuoteVersion(price: 110, change24h: 1, updatedAt: date)!
+    }
+
     func test_subscriptionStartsPersistenceBackedStreamAndWatchdog() async {
         let syncService = MockLivePricesSyncService()
         let reducer = MarketsReducer(syncService: syncService)
@@ -46,11 +50,15 @@ final class MarketsReducerTests: XCTestCase {
 
         let effect = reducer.reduce(
             state: &state,
-            action: .syncEvent(.batchCommitted(lastEventAt: eventDate))
+            action: .syncEvent(
+                generation: state.generation,
+                .batchCommitted(lastEventAt: eventDate, versions: ["bitcoin": version(at: eventDate)])
+            )
         )
 
         XCTAssertEqual(state.connection, .live)
         XCTAssertEqual(state.lastEventAt, eventDate)
+        XCTAssertEqual(state.committedQuoteVersions, ["bitcoin": version(at: eventDate)])
         XCTAssertFalse(state.reconnectAttemptIsActive)
         guard case .run = effect else {
             return XCTFail("Expected freshness watchdog")
@@ -66,11 +74,69 @@ final class MarketsReducerTests: XCTestCase {
 
         let effect = reducer.reduce(
             state: &state,
-            action: .syncEvent(.persistenceFailed)
+            action: .syncEvent(generation: state.generation, .persistenceFailed)
         )
 
         XCTAssertEqual(state.connection, .stale(.persistenceFailed))
+        XCTAssertTrue(state.committedQuoteVersions.isEmpty)
         assertCancelsAll(effect)
+    }
+
+    func test_disconnectAndReconnectRejectOldGenerationCommit() {
+        let reducer = MarketsReducer(syncService: MockLivePricesSyncService())
+        var state = MarketsState()
+        _ = reducer.reduce(state: &state, action: .subscriptionsChanged([bitcoin]))
+        let oldGeneration = state.generation
+        let committedAt = Date(timeIntervalSince1970: 200)
+        _ = reducer.reduce(
+            state: &state,
+            action: .syncEvent(
+                generation: oldGeneration,
+                .batchCommitted(lastEventAt: committedAt, versions: ["bitcoin": version(at: committedAt)])
+            )
+        )
+        XCTAssertEqual(state.committedQuoteVersions, ["bitcoin": version(at: committedAt)])
+
+        _ = reducer.reduce(state: &state, action: .onDisappear)
+        XCTAssertTrue(state.committedQuoteVersions.isEmpty)
+        _ = reducer.reduce(state: &state, action: .onAppear)
+        XCTAssertEqual(state.connection, .connecting)
+        XCTAssertTrue(state.committedQuoteVersions.isEmpty)
+        XCTAssertNotEqual(state.generation, oldGeneration)
+
+        let ignored = reducer.reduce(
+            state: &state,
+            action: .syncEvent(
+                generation: oldGeneration,
+                .batchCommitted(lastEventAt: committedAt, versions: ["bitcoin": version(at: committedAt)])
+            )
+        )
+        XCTAssertEqual(state.connection, .connecting)
+        XCTAssertTrue(state.committedQuoteVersions.isEmpty)
+        guard case .none = ignored else {
+            return XCTFail("Expected obsolete generation to be ignored")
+        }
+    }
+
+    func test_failedPersistenceCannotCreateLiveEvidence() {
+        let reducer = MarketsReducer(syncService: MockLivePricesSyncService())
+        var state = MarketsState()
+        _ = reducer.reduce(state: &state, action: .subscriptionsChanged([bitcoin]))
+        let generation = state.generation
+        _ = reducer.reduce(
+            state: &state,
+            action: .syncEvent(generation: generation, .persistenceFailed)
+        )
+        XCTAssertTrue(state.committedQuoteVersions.isEmpty)
+        XCTAssertEqual(state.connection, .stale(.persistenceFailed))
+        _ = reducer.reduce(
+            state: &state,
+            action: .syncEvent(
+                generation: generation,
+                .batchCommitted(lastEventAt: .now, versions: ["bitcoin": version(at: .now)])
+            )
+        )
+        XCTAssertTrue(state.committedQuoteVersions.isEmpty)
     }
 
     func test_streamFailureSchedulesCappedReconnect() {
@@ -82,7 +148,7 @@ final class MarketsReducerTests: XCTestCase {
 
         let effect = reducer.reduce(
             state: &state,
-            action: .syncEvent(.failed(.connectionLost))
+            action: .syncEvent(generation: state.generation, .failed(.connectionLost))
         )
 
         XCTAssertEqual(
@@ -126,13 +192,14 @@ final class MarketsReducerTests: XCTestCase {
         let delayTask = Task { await delayOperation() }
         await wait { clock.pendingSleepCount == 1 }
         clock.advance(by: .seconds(1))
-        guard case .reconnectDelayElapsed(attempt: 1)? = await delayTask.value else {
+        guard case let .reconnectDelayElapsed(generation, attempt)? = await delayTask.value,
+              generation == state.generation, attempt == 1 else {
             return XCTFail("Expected reconnect action")
         }
 
         let restarted = reducer.reduce(
             state: &state,
-            action: .reconnectDelayElapsed(attempt: 1)
+            action: .reconnectDelayElapsed(generation: state.generation, attempt: 1)
         )
         XCTAssertTrue(state.reconnectAttemptIsActive)
         guard case let .merge(liveEffects) = restarted,
@@ -142,6 +209,37 @@ final class MarketsReducerTests: XCTestCase {
         _ = operation()
         await wait { !syncService.subscriptions.isEmpty }
         XCTAssertEqual(syncService.subscriptions, [[bitcoin]])
+    }
+
+    func test_oldRetryActionCannotStartNewCycleWithSameAttemptNumber() {
+        let reducer = MarketsReducer(syncService: MockLivePricesSyncService())
+        var state = MarketsState(connection: .live, subscriptions: [bitcoin])
+
+        _ = reducer.reduce(state: &state, action: .websocketFailed(.connectionLost))
+        let oldGeneration = state.generation
+        XCTAssertEqual(state.connection, .reconnecting(attempt: 1, failure: .connectionLost))
+
+        _ = reducer.reduce(state: &state, action: .retryTapped)
+        _ = reducer.reduce(state: &state, action: .websocketFailed(.connectionLost))
+        let currentGeneration = state.generation
+        XCTAssertNotEqual(currentGeneration, oldGeneration)
+        XCTAssertEqual(state.connection, .reconnecting(attempt: 1, failure: .connectionLost))
+
+        let ignored = reducer.reduce(
+            state: &state,
+            action: .reconnectDelayElapsed(generation: oldGeneration, attempt: 1)
+        )
+        guard case .none = ignored else {
+            return XCTFail("An obsolete retry action must not start a stream")
+        }
+        XCTAssertFalse(state.reconnectAttemptIsActive)
+        XCTAssertEqual(state.generation, currentGeneration)
+
+        _ = reducer.reduce(
+            state: &state,
+            action: .reconnectDelayElapsed(generation: currentGeneration, attempt: 1)
+        )
+        XCTAssertTrue(state.reconnectAttemptIsActive)
     }
 
     func test_retryBudgetExhaustionLeavesDatabaseSnapshotVisibleAsStale() {

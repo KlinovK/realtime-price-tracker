@@ -88,7 +88,10 @@ struct AppReducer: ReducerProtocol {
             guard state.isFavoritesVisible else { return .none }
             return marketsReducer.reduce(
                 state: &state.markets,
-                action: .syncEvent(.persistenceFailed)
+                action: .syncEvent(
+                    generation: state.markets.generation,
+                    .persistenceFailed
+                )
             )
             .map(AppAction.markets)
 
@@ -104,7 +107,10 @@ struct AppReducer: ReducerProtocol {
             guard state.isFavoritesVisible else { return .none }
             return marketsReducer.reduce(
                 state: &state.markets,
-                action: .syncEvent(.persistenceFailed)
+                action: .syncEvent(
+                    generation: state.markets.generation,
+                    .persistenceFailed
+                )
             )
             .map(AppAction.markets)
 

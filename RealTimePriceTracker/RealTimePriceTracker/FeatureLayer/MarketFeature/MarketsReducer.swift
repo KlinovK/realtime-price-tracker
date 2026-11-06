@@ -41,13 +41,13 @@ struct MarketsReducer: ReducerProtocol {
             guard !state.subscriptions.isEmpty else { return .none }
             state.reconnectAttemptIsActive = false
             state.connection = .connecting
-            return startLiveEffects(
-                subscriptions: state.subscriptions,
-                lastEventAt: state.lastEventAt,
+            return beginGeneration(
+                state: &state,
                 reconnectAttempt: nil
             )
 
         case .onDisappear:
+            invalidateGeneration(&state)
             state.connection = .idle
             state.reconnectAttemptIsActive = false
             return cancelLiveEffects()
@@ -58,9 +58,8 @@ struct MarketsReducer: ReducerProtocol {
             state.connection = .connecting
             return .merge([
                 .cancel(id: CancelID.reconnectDelay),
-                startLiveEffects(
-                    subscriptions: state.subscriptions,
-                    lastEventAt: state.lastEventAt,
+                beginGeneration(
+                    state: &state,
                     reconnectAttempt: nil
                 )
             ])
@@ -68,8 +67,8 @@ struct MarketsReducer: ReducerProtocol {
         case .subscriptionsChanged(let subscriptions):
             state.subscriptions = normalized(subscriptions)
             state.reconnectAttemptIsActive = false
-
             guard !state.subscriptions.isEmpty else {
+                invalidateGeneration(&state)
                 state.connection = .idle
                 state.lastEventAt = nil
                 return cancelLiveEffects()
@@ -78,35 +77,41 @@ struct MarketsReducer: ReducerProtocol {
             state.connection = .connecting
             return .merge([
                 .cancel(id: CancelID.reconnectDelay),
-                startLiveEffects(
-                    subscriptions: state.subscriptions,
-                    lastEventAt: state.lastEventAt,
+                beginGeneration(
+                    state: &state,
                     reconnectAttempt: nil
                 )
             ])
 
-        case .syncEvent(.batchCommitted(let lastEventAt)):
+        case .syncEvent(let generation, .batchCommitted(let lastEventAt, let versions)):
+            guard generation == state.generation else { return .none }
             state.lastEventAt = lastEventAt
             state.connection = .live
+            state.committedQuoteVersions.merge(versions) { _, newest in newest }
             state.reconnectAttemptIsActive = false
             return startWatchdog(
+                generation: generation,
                 lastEventAt: lastEventAt,
                 reconnectAttempt: nil
             )
 
-        case .syncEvent(.failed(let failure)):
+        case .syncEvent(let generation, .failed(let failure)):
+            guard generation == state.generation else { return .none }
             return handleStreamFailure(
                 MarketsFailure(failure),
                 state: &state
             )
 
-        case .syncEvent(.persistenceFailed):
+        case .syncEvent(let generation, .persistenceFailed):
+            guard generation == state.generation else { return .none }
+            invalidateGeneration(&state)
             state.connection = .stale(.persistenceFailed)
             state.reconnectAttemptIsActive = false
             return cancelLiveEffects()
 
-        case let .streamTimedOut(expectedLastEventAt, expectedReconnectAttempt):
-            guard state.lastEventAt == expectedLastEventAt else { return .none }
+        case let .streamTimedOut(generation, expectedLastEventAt, expectedReconnectAttempt):
+            guard generation == state.generation,
+                  state.lastEventAt == expectedLastEventAt else { return .none }
 
             switch state.connection {
             case .connecting, .live:
@@ -132,8 +137,9 @@ struct MarketsReducer: ReducerProtocol {
                 return .none
             }
 
-        case .reconnectDelayElapsed(let attempt):
-            guard case .reconnecting(let currentAttempt, _) = state.connection,
+        case .reconnectDelayElapsed(let generation, let attempt):
+            guard generation == state.generation,
+                  case .reconnecting(let currentAttempt, _) = state.connection,
                   currentAttempt == attempt,
                   !state.reconnectAttemptIsActive,
                   !state.subscriptions.isEmpty else {
@@ -141,9 +147,8 @@ struct MarketsReducer: ReducerProtocol {
             }
 
             state.reconnectAttemptIsActive = true
-            return startLiveEffects(
-                subscriptions: state.subscriptions,
-                lastEventAt: state.lastEventAt,
+            return beginGeneration(
+                state: &state,
                 reconnectAttempt: attempt
             )
 
@@ -154,6 +159,24 @@ struct MarketsReducer: ReducerProtocol {
 }
 
 private extension MarketsReducer {
+    func invalidateGeneration(_ state: inout MarketsState) {
+        state.generation += 1
+        state.committedQuoteVersions.removeAll()
+    }
+
+    func beginGeneration(
+        state: inout MarketsState,
+        reconnectAttempt: Int?
+    ) -> Effect<MarketsAction> {
+        invalidateGeneration(&state)
+        return startLiveEffects(
+            subscriptions: state.subscriptions,
+            lastEventAt: state.lastEventAt,
+            reconnectAttempt: reconnectAttempt,
+            generation: state.generation
+        )
+    }
+
     func normalized(
         _ subscriptions: [FavoriteAssetSubscription]
     ) -> [FavoriteAssetSubscription] {
@@ -167,7 +190,8 @@ private extension MarketsReducer {
     }
 
     func startStreaming(
-        subscriptions: [FavoriteAssetSubscription]
+        subscriptions: [FavoriteAssetSubscription],
+        generation: Int
     ) -> Effect<MarketsAction> {
         .stream(id: CancelID.lifecycle) {
             AsyncStream { continuation in
@@ -176,7 +200,7 @@ private extension MarketsReducer {
                         subscriptions: subscriptions
                     ) {
                         guard !Task.isCancelled else { break }
-                        continuation.yield(.syncEvent(event))
+                        continuation.yield(.syncEvent(generation: generation, event))
                     }
                     continuation.finish()
                 }
@@ -191,11 +215,13 @@ private extension MarketsReducer {
     func startLiveEffects(
         subscriptions: [FavoriteAssetSubscription],
         lastEventAt: Date?,
-        reconnectAttempt: Int?
+        reconnectAttempt: Int?,
+        generation: Int
     ) -> Effect<MarketsAction> {
         .merge([
-            startStreaming(subscriptions: subscriptions),
+            startStreaming(subscriptions: subscriptions, generation: generation),
             startWatchdog(
+                generation: generation,
                 lastEventAt: lastEventAt,
                 reconnectAttempt: reconnectAttempt
             )
@@ -203,6 +229,7 @@ private extension MarketsReducer {
     }
 
     func startWatchdog(
+        generation: Int,
         lastEventAt: Date?,
         reconnectAttempt: Int?
     ) -> Effect<MarketsAction> {
@@ -210,6 +237,7 @@ private extension MarketsReducer {
             do {
                 try await clock.sleep(for: staleTimeout)
                 return .streamTimedOut(
+                    generation: generation,
                     lastEventAt: lastEventAt,
                     reconnectAttempt: reconnectAttempt
                 )
@@ -249,6 +277,7 @@ private extension MarketsReducer {
         failure: MarketsFailure,
         state: inout MarketsState
     ) -> Effect<MarketsAction> {
+        invalidateGeneration(&state)
         let nextAttempt = attempt + 1
 
         guard !state.subscriptions.isEmpty,
@@ -264,6 +293,7 @@ private extension MarketsReducer {
         )
         state.reconnectAttemptIsActive = false
         let delay = reconnectPolicy.delay(forAttempt: nextAttempt)
+        let generation = state.generation
 
         return .merge([
             .cancel(id: CancelID.lifecycle),
@@ -271,7 +301,7 @@ private extension MarketsReducer {
             .run(id: CancelID.reconnectDelay) {
                 do {
                     try await clock.sleep(for: delay)
-                    return .reconnectDelayElapsed(attempt: nextAttempt)
+                    return .reconnectDelayElapsed(generation: generation, attempt: nextAttempt)
                 } catch {
                     return nil
                 }

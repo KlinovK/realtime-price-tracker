@@ -39,7 +39,19 @@ struct MarketsView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 6) {
                             ForEach(favoriteAssets) { market in
-                                FavoriteAssetCell(market: market)
+                                FavoriteAssetCell(
+                                    market: market,
+                                    presentation: FavoritePricePresentation(
+                                        snapshotPrice: market.snapshotPrice,
+                                        snapshotChange24h: market.snapshotChange24h,
+                                        livePrice: market.livePrice,
+                                        liveChange24h: market.liveChange24h,
+                                        liveUpdatedAt: market.liveUpdatedAt,
+                                        committedVersion: store.state.markets
+                                            .committedQuoteVersions[market.coinGeckoID],
+                                        connection: store.state.markets.connection
+                                    )
+                                )
                             }
                         }
                         .padding(8)

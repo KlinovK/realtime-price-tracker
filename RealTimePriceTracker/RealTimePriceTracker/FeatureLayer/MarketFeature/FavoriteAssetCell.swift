@@ -5,20 +5,12 @@
 
 import SwiftUI
 
-/// Heat-map cell that prefers a Binance realtime quote and falls back to the last
-/// ten-minute CoinGecko snapshot until the socket produces its first value.
+/// Heat-map cell whose price source and freshness come from a pure policy.
 struct FavoriteAssetCell: View {
     let market: AssetRecord
+    let presentation: FavoritePricePresentation
 
     @State private var pulse = false
-
-    private var price: Decimal? {
-        market.favoritePrice
-    }
-
-    private var change: Decimal {
-        market.favoriteChange24h
-    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -28,19 +20,19 @@ struct FavoriteAssetCell: View {
                     .lineLimit(1)
 
                 Circle()
-                    .fill(market.liveUpdatedAt == nil ? .orange : .green)
+                    .fill(presentation.status == .live ? .green : .orange)
                     .frame(width: 5, height: 5)
                     .accessibilityLabel(
-                        market.liveUpdatedAt == nil ? "Snapshot" : "Live"
+                        presentation.status.accessibilityLabel
                     )
             }
 
-            Text(MarketValueFormatting.price(price))
+            Text(MarketValueFormatting.price(presentation.price))
                 .font(.caption2.monospacedDigit())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
-            Text(MarketValueFormatting.percentage(change))
+            Text(MarketValueFormatting.percentage(presentation.change24h))
                 .font(.caption2.weight(.bold))
         }
         .foregroundStyle(.white)
@@ -48,7 +40,7 @@ struct FavoriteAssetCell: View {
         .frame(maxWidth: .infinity, minHeight: 82)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(HeatColor.color(for: change))
+                .fill(HeatColor.color(for: presentation.change24h ?? .zero))
                 .overlay {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(.white.opacity(0.08), lineWidth: 1)

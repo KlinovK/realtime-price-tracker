@@ -6,6 +6,22 @@ nonisolated struct FavoriteAssetSubscription: Equatable, Hashable, Sendable {
     let binancePairID: String
 }
 
+/// Process-local receipt for the persisted fields a view has actually observed.
+/// It is never persisted; evidence is cleared when a connection generation ends.
+nonisolated struct LiveQuoteVersion: Equatable, Sendable {
+    let updatedAt: Date
+    private let valueFingerprint: Int
+
+    init?(price: Decimal?, change24h: Decimal?, updatedAt: Date?) {
+        guard let price, let updatedAt else { return nil }
+        self.updatedAt = updatedAt
+        var hasher = Hasher()
+        hasher.combine(price)
+        hasher.combine(change24h)
+        valueFingerprint = hasher.finalize()
+    }
+}
+
 nonisolated enum MarketDataRepositoryError: Error, Equatable, Sendable {
     case emptySnapshot
     case assetNotFound
@@ -23,7 +39,7 @@ nonisolated protocol MarketDataRepositoryProtocol: Sendable {
     func applyLiveQuotes(
         _ quotes: [CryptoAsset],
         subscriptions: [FavoriteAssetSubscription]
-    ) async throws
+    ) async throws -> [String: LiveQuoteVersion]
     func importLegacyFavorites(_ coinGeckoIDs: Set<String>) async throws
 }
 
@@ -170,10 +186,11 @@ actor MarketDataRepository: MarketDataRepositoryProtocol {
     func applyLiveQuotes(
         _ quotes: [CryptoAsset],
         subscriptions: [FavoriteAssetSubscription]
-    ) throws {
-        guard !quotes.isEmpty, !subscriptions.isEmpty else { return }
+    ) throws -> [String: LiveQuoteVersion] {
+        guard !quotes.isEmpty, !subscriptions.isEmpty else { return [:] }
 
         do {
+            try Task.checkCancellation()
             let favoriteIDs = try favoriteIDs()
             let subscriptionsByPair = Dictionary(
                 grouping: subscriptions,
@@ -187,10 +204,9 @@ actor MarketDataRepository: MarketDataRepositoryProtocol {
             }
             let latestQuoteByPair = Dictionary(
                 quotes.map { ($0.id.uppercased(), $0) },
-                uniquingKeysWith: { first, second in
-                    first.lastUpdated >= second.lastUpdated ? first : second
-                }
+                uniquingKeysWith: { _, latest in latest }
             )
+            var committedVersions: [String: LiveQuoteVersion] = [:]
 
             for (pairID, quote) in latestQuoteByPair {
                 guard let coinGeckoID = unambiguousCoinIDByPair[pairID],
@@ -201,9 +217,19 @@ actor MarketDataRepository: MarketDataRepositoryProtocol {
                 record.livePrice = quote.price
                 record.liveChange24h = quote.change24h
                 record.liveUpdatedAt = quote.lastUpdated
+                committedVersions[coinGeckoID] = LiveQuoteVersion(
+                    price: record.livePrice,
+                    change24h: record.liveChange24h,
+                    updatedAt: record.liveUpdatedAt
+                )
             }
 
+            try Task.checkCancellation()
             try commit()
+            return committedVersions
+        } catch is CancellationError {
+            modelContext.rollback()
+            throw CancellationError()
         } catch {
             modelContext.rollback()
             throw MarketDataRepositoryError.persistenceFailed(
@@ -285,6 +311,11 @@ private extension MarketDataRepository {
         record.snapshotUpdatedAt = fetchedAt
         record.isTopAsset = true
         record.binancePairID = market.binanceUSDTID
+        if market.currentPrice != nil {
+            record.livePrice = nil
+            record.liveChange24h = nil
+            record.liveUpdatedAt = nil
+        }
     }
 
     func assetOrder(_ lhs: AssetRecord, _ rhs: AssetRecord) -> Bool {

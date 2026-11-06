@@ -1,7 +1,7 @@
 import Foundation
 
 nonisolated enum LivePricesSyncEvent: Equatable, Sendable {
-    case batchCommitted(lastEventAt: Date)
+    case batchCommitted(lastEventAt: Date, versions: [String: LiveQuoteVersion])
     case failed(MarketStreamFailure)
     case persistenceFailed
 }
@@ -15,8 +15,7 @@ nonisolated protocol LivePricesSyncServiceProtocol: Sendable {
 /// Bridges the Binance transport to the transactional SwiftData writer.
 ///
 /// A live event is exposed to TCA only after its complete throttled batch has
-/// committed. The UI observes that same commit through `@Query`, avoiding the
-/// reducer/database race that otherwise produces temporarily inconsistent cells.
+/// committed. The UI matches the receipt to fields observed through `@Query`.
 nonisolated struct LivePricesSyncService: LivePricesSyncServiceProtocol {
     private let transport: any MarketsServiceProtocol
     private let repository: any MarketDataRepositoryProtocol
@@ -45,13 +44,17 @@ nonisolated struct LivePricesSyncService: LivePricesSyncServiceProtocol {
                     switch event {
                     case .quotes(let quotes):
                         do {
-                            try await repository.applyLiveQuotes(
+                            let committedVersions = try await repository.applyLiveQuotes(
                                 quotes,
                                 subscriptions: subscriptions
                             )
-                            if let lastEventAt = quotes.map(\.lastUpdated).max() {
+                            if !committedVersions.isEmpty,
+                               let lastEventAt = quotes.map(\.lastUpdated).max() {
                                 continuation.yield(
-                                    .batchCommitted(lastEventAt: lastEventAt)
+                                    .batchCommitted(
+                                        lastEventAt: lastEventAt,
+                                        versions: committedVersions
+                                    )
                                 )
                             }
                         } catch is CancellationError {

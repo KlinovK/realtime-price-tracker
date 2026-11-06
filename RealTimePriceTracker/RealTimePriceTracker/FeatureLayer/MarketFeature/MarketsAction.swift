@@ -20,8 +20,8 @@ nonisolated enum MarketsAction: Sendable {
     case onDisappear
     case retryTapped
     case subscriptionsChanged([FavoriteAssetSubscription])
-    case syncEvent(LivePricesSyncEvent)
-    case streamTimedOut(lastEventAt: Date?, reconnectAttempt: Int?)
-    case reconnectDelayElapsed(attempt: Int)
+    case syncEvent(generation: Int, LivePricesSyncEvent)
+    case streamTimedOut(generation: Int, lastEventAt: Date?, reconnectAttempt: Int?)
+    case reconnectDelayElapsed(generation: Int, attempt: Int)
     case websocketFailed(MarketsFailure)
 }
