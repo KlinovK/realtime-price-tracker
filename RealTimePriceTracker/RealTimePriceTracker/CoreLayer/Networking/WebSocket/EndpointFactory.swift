@@ -13,7 +13,10 @@ import Foundation
 /// - Converts symbol configurations into WebSocket stream URLs
 /// - Groups streams into safe-sized chunks for iOS reliability
 /// - Ensures valid Binance combined stream formatting
-enum EndpointFactory {
+///
+/// This transport concern stays behind `MarketsServiceProtocol`; features store
+/// domain subscriptions rather than WebSocket endpoints.
+nonisolated enum EndpointFactory {
 
     // MARK: - Configuration
 
@@ -63,4 +66,3 @@ enum EndpointFactory {
         }
     }
 }
-

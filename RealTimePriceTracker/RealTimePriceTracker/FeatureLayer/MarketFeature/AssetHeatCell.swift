@@ -38,7 +38,13 @@ struct AssetHeatCell: View {
         .background(background)
         .scaleEffect(pulse ? 1.06 : 1.0)
         .animation(.easeInOut(duration: 0.22), value: pulse)
-        .onChange(of: asset.price) {
+        .onChange(of: asset.price) { oldPrice, newPrice in
+            guard AssetHeatCellFormatting.shouldPulse(
+                from: oldPrice,
+                to: newPrice
+            ) else {
+                return
+            }
             triggerPulse()
         }
     }

@@ -7,10 +7,21 @@
 
 import Foundation
 
-enum MarketsAction {
+/// Every event that can change the markets feature or start feature-owned work.
+///
+/// User intent, lifecycle events, dependency responses, stream batches, and retry
+/// deadlines all enter the reducer through this single type. This makes the
+/// business logic reproducible in reducer tests.
+///
+/// Provider events are persistence-aware: a committed-batch action means the
+/// corresponding SwiftData transaction succeeded.
+nonisolated enum MarketsAction: Sendable {
     case onAppear
-    case websocketMessage(String)
-    case updateAsset(CryptoAsset)
-    case websocketFailed(Error)
-    case rebuildStreams([URL]) 
+    case onDisappear
+    case retryTapped
+    case subscriptionsChanged([FavoriteAssetSubscription])
+    case syncEvent(generation: Int, LivePricesSyncEvent)
+    case streamTimedOut(generation: Int, lastEventAt: Date?, reconnectAttempt: Int?)
+    case reconnectDelayElapsed(generation: Int, attempt: Int)
+    case websocketFailed(MarketsFailure)
 }

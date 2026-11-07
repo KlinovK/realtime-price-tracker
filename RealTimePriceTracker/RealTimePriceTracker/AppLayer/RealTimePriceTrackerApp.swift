@@ -5,6 +5,7 @@
 //  Created by Kanstantin Klinau on 19/05/26.
 //
 
+import SwiftData
 import SwiftUI
 /// The main entry point for the Real Time Price Tracker application.
 ///
@@ -16,6 +17,50 @@ import SwiftUI
 /// SwiftUI automatically initializes this type when the app starts.
 @main
 struct RealTimePriceTrackerApp: App {
+    private let modelContainer: ModelContainer
+
+    @State
+    private var store: Store<AppReducer>
+
+    init() {
+        do {
+            let container = try ModelContainer(
+                for: AssetRecord.self,
+                FavoriteRecord.self,
+                PricePointRecord.self
+            )
+            let repository = MarketDataRepository(modelContainer: container)
+            let coinGeckoClient = CoinGeckoClient()
+            let coinGeckoSync = CoinGeckoSyncService(
+                client: coinGeckoClient,
+                repository: repository
+            )
+            let livePricesSync = LivePricesSyncService(
+                transport: MarketsService(),
+                repository: repository
+            )
+            let reducer = AppReducer(
+                marketsReducer: MarketsReducer(syncService: livePricesSync),
+                topAssetsReducer: TopAssetsReducer(
+                    syncService: coinGeckoSync
+                ),
+                assetDetailsReducer: AssetDetailsReducer(
+                    syncService: coinGeckoSync
+                ),
+                repository: repository
+            )
+
+            modelContainer = container
+            _store = State(
+                initialValue: Store(
+                    initialState: AppState(),
+                    reducer: reducer
+                )
+            )
+        } catch {
+            fatalError("Unable to create market database: \(error)")
+        }
+    }
 
     // MARK: - Body
 
@@ -27,6 +72,7 @@ struct RealTimePriceTrackerApp: App {
         WindowGroup {
             makeRootView()
         }
+        .modelContainer(modelContainer)
     }
 
     // MARK: - View Builders
@@ -41,6 +87,6 @@ struct RealTimePriceTrackerApp: App {
     /// - Returns: The root view displayed when the app launches.
     @ViewBuilder
     func makeRootView() -> some View {
-        RootView()
+        RootView(store: store)
     }
 }

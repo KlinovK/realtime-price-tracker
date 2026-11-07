@@ -34,13 +34,15 @@ final class TopSymbolsRefresherTests: XCTestCase {
         let stream = refresher.stream()
         var iterator = stream.makeAsyncIterator()
 
-        let emitted = await iterator.next()
+        guard case .success(let emitted)? = await iterator.next() else {
+            return XCTFail("Expected a successful symbol refresh")
+        }
 
         // Then
 
-        XCTAssertEqual(emitted?.count, 100)
-        XCTAssertEqual(emitted?.first, "SYM1")
-        XCTAssertEqual(emitted?.last, "SYM100")
+        XCTAssertEqual(emitted.count, 100)
+        XCTAssertEqual(emitted.first, "SYM1")
+        XCTAssertEqual(emitted.last, "SYM100")
     }
 
     func test_streamEmitsMultipleUpdates() async {
@@ -64,8 +66,10 @@ final class TopSymbolsRefresherTests: XCTestCase {
         let stream = refresher.stream()
         var iterator = stream.makeAsyncIterator()
 
-        let first = await iterator.next()
-        let second = await iterator.next()
+        guard case .success(let first)? = await iterator.next(),
+              case .success(let second)? = await iterator.next() else {
+            return XCTFail("Expected successful symbol refreshes")
+        }
 
         // Then
 
@@ -99,6 +103,94 @@ final class TopSymbolsRefresherTests: XCTestCase {
     }
 }
 
+@MainActor
+final class TopSymbolsServiceTests: XCTestCase {
+
+    func test_fetchTopSymbols_rejectsHTTPFailure() async {
+        let service = TopSymbolsService { url in
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 503,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (Data(), response)
+        }
+
+        do {
+            _ = try await service.fetchTopSymbols()
+            XCTFail("Expected an HTTP status failure")
+        } catch let error as TopSymbolsServiceError {
+            XCTAssertEqual(error, .httpStatusCode(503))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func test_fetchTopSymbols_rejectsInvalidPayload() async {
+        let service = TopSymbolsService { url in
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (Data("not-json".utf8), response)
+        }
+
+        do {
+            _ = try await service.fetchTopSymbols()
+            XCTFail("Expected a payload failure")
+        } catch let error as TopSymbolsServiceError {
+            XCTAssertEqual(error, .invalidPayload)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func test_fetchTopSymbols_returnsOnlyRankedUSDTMarkets() async throws {
+        let payload = Data(
+            """
+            [
+              {
+                "symbol": "ETHUSDT",
+                "quoteVolume": "200.0000000000000001",
+                "priceChangePercent": "2.1"
+              },
+              {
+                "symbol": "BTCUSDT",
+                "quoteVolume": "100.0000000000000002",
+                "priceChangePercent": "1.2"
+              },
+              {
+                "symbol": "ETHBTC",
+                "quoteVolume": "999999",
+                "priceChangePercent": "0.5"
+              },
+              {
+                "symbol": "INVALIDUSDT",
+                "quoteVolume": "not-a-number",
+                "priceChangePercent": "0.1"
+              }
+            ]
+            """.utf8
+        )
+        let service = TopSymbolsService { url in
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (payload, response)
+        }
+
+        let symbols = try await service.fetchTopSymbols()
+
+        XCTAssertEqual(symbols, ["ethusdt", "btcusdt"])
+    }
+}
+
 // MARK: - Mocks
 
 final class MockTopSymbolsService: TopSymbolsServiceProtocol {
@@ -109,7 +201,7 @@ final class MockTopSymbolsService: TopSymbolsServiceProtocol {
         self.symbolsToReturn = symbolsToReturn
     }
 
-    func fetchTopSymbols() async -> [String] {
+    func fetchTopSymbols() async throws -> [String] {
         symbolsToReturn
     }
 }
@@ -123,7 +215,7 @@ final class SequentialMockTopSymbolsService: TopSymbolsServiceProtocol {
         self.responses = responses
     }
 
-    func fetchTopSymbols() async -> [String] {
+    func fetchTopSymbols() async throws -> [String] {
 
         defer {
             currentIndex += 1
@@ -137,7 +229,7 @@ final class CountingMockTopSymbolsService: TopSymbolsServiceProtocol {
 
     private(set) var callCount = 0
 
-    func fetchTopSymbols() async -> [String] {
+    func fetchTopSymbols() async throws -> [String] {
         callCount += 1
         return ["BTC"]
     }

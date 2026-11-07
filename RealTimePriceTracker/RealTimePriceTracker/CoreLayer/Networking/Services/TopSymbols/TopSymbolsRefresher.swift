@@ -9,7 +9,13 @@ import Foundation
 
 /// A service responsible for periodically refreshing top trading symbols.
 ///
-/// Emits updated symbol lists every 60 seconds as an AsyncStream.
+/// Emits typed symbol-loading results every 60 seconds as an AsyncStream.
+///
+/// - Warning: This legacy type is not connected to the composed application. The
+///   Top 100 now comes from `TopAssetsReducer`, while realtime streams are derived
+///   from favorites.
+/// - Recommendation: Inject a `Clock<Duration>` instead of nanoseconds before
+///   integrating this stream, then define how removed symbols leave feature state.
 final class TopSymbolsRefresher {
 
     // MARK: - Properties
@@ -28,16 +34,30 @@ final class TopSymbolsRefresher {
     }
 
     // MARK: - Public API
-    func stream() -> AsyncStream<[String]> {
+    func stream() -> AsyncStream<Result<[String], MarketsFailure>> {
         AsyncStream { continuation in
             let task = Task {
                 while !Task.isCancelled {
-                    let symbols = await service.fetchTopSymbols()
-                    let top100 = Array(symbols.prefix(100))
-                    continuation.yield(top100)
-                    try? await Task.sleep(
-                        nanoseconds: refreshIntervalNanoseconds
-                    )
+                    do {
+                        let symbols = try await service.fetchTopSymbols()
+                        continuation.yield(
+                            .success(Array(symbols.prefix(100)))
+                        )
+                    } catch is CancellationError {
+                        break
+                    } catch {
+                        continuation.yield(
+                            .failure(MarketsFailure(error))
+                        )
+                    }
+
+                    do {
+                        try await Task.sleep(
+                            nanoseconds: refreshIntervalNanoseconds
+                        )
+                    } catch {
+                        break
+                    }
                 }
             }
             continuation.onTermination = { _ in

@@ -1,0 +1,16 @@
+# Finder and local Xcode state
+.DS_Store
+xcuserdata/
+*.xcuserstate
+
+# Local build and test output
+DerivedData/
+*.xcresult
+*.xcarchive
+
+# Editor and temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
