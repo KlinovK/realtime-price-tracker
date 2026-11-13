@@ -170,10 +170,13 @@ actor MarketDataRepository: MarketDataRepositoryProtocol {
             return records
                 .filter { favoriteIDs.contains($0.coinGeckoID) }
                 .sorted(by: assetOrder)
-                .map {
-                    FavoriteAssetSubscription(
+                .compactMap {
+                    guard let entry = BinancePairRegistry.approved.entry(
+                        for: $0.coinGeckoID
+                    ) else { return nil }
+                    return FavoriteAssetSubscription(
                         coinGeckoID: $0.coinGeckoID,
-                        binancePairID: $0.binancePairID
+                        binancePairID: entry.pairID
                     )
                 }
         } catch {
@@ -193,7 +196,12 @@ actor MarketDataRepository: MarketDataRepositoryProtocol {
             try Task.checkCancellation()
             let favoriteIDs = try favoriteIDs()
             let subscriptionsByPair = Dictionary(
-                grouping: subscriptions,
+                grouping: subscriptions.filter {
+                    BinancePairRegistry.approved.approves(
+                        coinGeckoID: $0.coinGeckoID,
+                        pairID: $0.binancePairID
+                    )
+                },
                 by: \FavoriteAssetSubscription.binancePairID
             )
             // A ticker symbol is not a globally unique CoinGecko identity. If two
@@ -214,6 +222,9 @@ actor MarketDataRepository: MarketDataRepositoryProtocol {
                       let record = try assetRecord(coinGeckoID: coinGeckoID) else {
                     continue
                 }
+                // A legacy record may still hold a ticker-derived pair. The
+                // approved pair and new quote become visible in the same save.
+                record.binancePairID = pairID
                 record.livePrice = quote.price
                 record.liveChange24h = quote.change24h
                 record.liveUpdatedAt = quote.lastUpdated
@@ -289,7 +300,7 @@ private extension MarketDataRepository {
             low24h: market.low24h,
             snapshotChange24h: market.priceChangePercentage24h,
             snapshotUpdatedAt: fetchedAt,
-            binancePairID: market.binanceUSDTID
+            binancePairID: BinancePairRegistry.approved.entry(for: market.id)?.pairID ?? ""
         )
     }
 
@@ -310,12 +321,13 @@ private extension MarketDataRepository {
         record.snapshotChange24h = market.priceChangePercentage24h
         record.snapshotUpdatedAt = fetchedAt
         record.isTopAsset = true
-        record.binancePairID = market.binanceUSDTID
-        if market.currentPrice != nil {
+        let approvedPairID = BinancePairRegistry.approved.entry(for: market.id)?.pairID ?? ""
+        if record.binancePairID != approvedPairID || market.currentPrice != nil {
             record.livePrice = nil
             record.liveChange24h = nil
             record.liveUpdatedAt = nil
         }
+        record.binancePairID = approvedPairID
     }
 
     func assetOrder(_ lhs: AssetRecord, _ rhs: AssetRecord) -> Bool {
