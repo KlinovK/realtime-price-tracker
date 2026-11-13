@@ -113,7 +113,7 @@ xcodebuild test \
 
 ## Known limitations and next work
 
-- Binance pairs are inferred from symbols; explicit provider-pair mapping is needed for ambiguous or unsupported assets.
+- Live subscriptions use an explicit CoinGecko ID to Binance pair registry for Bitcoin, Ethereum, and Solana. Other favorites stay snapshot-only. Current Spot availability and trading status are not yet checked; Binance exchangeInfo validation is planned for Stage 4.3.
 - Production CoinGecko usage needs authenticated configuration and quota-aware backoff.
 - Coin icon bytes are not cached for guaranteed offline display.
 - Persisted model changes need a migration plan before shipping an update.

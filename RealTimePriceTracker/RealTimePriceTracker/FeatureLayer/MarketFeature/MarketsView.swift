@@ -47,6 +47,10 @@ struct MarketsView: View {
                                         livePrice: market.livePrice,
                                         liveChange24h: market.liveChange24h,
                                         liveUpdatedAt: market.liveUpdatedAt,
+                                        isApprovedPair: BinancePairRegistry.approved.approves(
+                                            coinGeckoID: market.coinGeckoID,
+                                            pairID: market.binancePairID
+                                        ),
                                         committedVersion: store.state.markets
                                             .committedQuoteVersions[market.coinGeckoID],
                                         connection: store.state.markets.connection

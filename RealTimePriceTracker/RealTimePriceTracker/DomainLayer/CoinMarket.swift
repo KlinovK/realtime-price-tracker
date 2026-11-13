@@ -36,14 +36,6 @@ nonisolated struct CoinMarket: Decodable, Equatable, Identifiable, Sendable {
         case priceChangePercentage24h = "price_change_percentage_24h"
     }
 
-    /// Best-effort bridge to the existing Binance USDT ticker stream.
-    ///
-    /// - Warning: Symbols are not globally unique and not every CoinGecko asset has
-    ///   a Binance USDT market. A production multi-exchange app should persist an
-    ///   explicit provider-pair mapping instead of deriving it this way.
-    var binanceUSDTID: String {
-        "\(symbol.uppercased())USDT"
-    }
 }
 
 /// One historical price sample returned by CoinGecko's market-chart endpoint.

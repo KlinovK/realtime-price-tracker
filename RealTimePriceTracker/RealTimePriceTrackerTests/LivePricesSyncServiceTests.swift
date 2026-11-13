@@ -52,6 +52,40 @@ final class LivePricesSyncServiceTests: XCTestCase {
         let end = await iterator.next()
         XCTAssertNil(end)
     }
+
+    func test_unapprovedSubscriptionNeverReachesTransport() async {
+        let service = LivePricesSyncService(
+            transport: FailingMarketsService(),
+            repository: MockMarketDataRepository()
+        )
+        var iterator = service.start(subscriptions: [
+            FavoriteAssetSubscription(coinGeckoID: "impostor", binancePairID: "BTCUSDT")
+        ]).makeAsyncIterator()
+
+        let event = await iterator.next()
+        XCTAssertNil(event)
+    }
+
+    func test_mixedSubscriptionsOpenOneStreamForApprovedPairsOnly() async {
+        let transport = RecordingMarketsService()
+        let service = LivePricesSyncService(
+            transport: transport,
+            repository: MockMarketDataRepository()
+        )
+        var iterator = service.start(subscriptions: [
+            FavoriteAssetSubscription(coinGeckoID: "bitcoin", binancePairID: "BTCUSDT"),
+            FavoriteAssetSubscription(coinGeckoID: "unknown", binancePairID: "XYZUSDT"),
+            FavoriteAssetSubscription(coinGeckoID: "ethereum", binancePairID: "ETHUSDT")
+        ]).makeAsyncIterator()
+
+        guard case let .batchCommitted(_, versions)? = await iterator.next() else {
+            return XCTFail("Expected a committed approved quote")
+        }
+        XCTAssertEqual(transport.calls, [["BTCUSDT", "ETHUSDT"]])
+        XCTAssertEqual(Set(versions.keys), ["bitcoin", "ethereum"])
+        let end = await iterator.next()
+        XCTAssertNil(end)
+    }
 }
 
 private nonisolated struct ScriptedMarketsService: MarketsServiceProtocol {
@@ -59,6 +93,35 @@ private nonisolated struct ScriptedMarketsService: MarketsServiceProtocol {
         AsyncStream { continuation in
             continuation.yield(.quotes([
                 CryptoAsset(id: "BTCUSDT", symbol: "BTCUSDT", price: 110, change24h: 1)
+            ]))
+            continuation.finish()
+        }
+    }
+}
+
+private nonisolated struct FailingMarketsService: MarketsServiceProtocol {
+    func startStreaming(symbols: [String]) -> AsyncStream<MarketStreamEvent> {
+        XCTFail("An unapproved pair must not open a WebSocket")
+        return AsyncStream { $0.finish() }
+    }
+}
+
+private nonisolated final class RecordingMarketsService:
+    MarketsServiceProtocol,
+    @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedCalls: [[String]] = []
+
+    var calls: [[String]] {
+        lock.withLock { recordedCalls }
+    }
+
+    func startStreaming(symbols: [String]) -> AsyncStream<MarketStreamEvent> {
+        lock.withLock { recordedCalls.append(symbols) }
+        return AsyncStream { continuation in
+            continuation.yield(.quotes([
+                CryptoAsset(id: "BTCUSDT", symbol: "BTCUSDT", price: 110, change24h: 1),
+                CryptoAsset(id: "ETHUSDT", symbol: "ETHUSDT", price: 210, change24h: 2)
             ]))
             continuation.finish()
         }

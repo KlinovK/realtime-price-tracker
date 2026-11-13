@@ -40,6 +40,39 @@ final class MarketsReducerTests: XCTestCase {
         XCTAssertEqual(syncService.subscriptions, [[bitcoin]])
     }
 
+    func test_reconnectUsesOnlyApprovedMappingAfterLegacySubscriptionIsRejected() async {
+        let syncService = MockLivePricesSyncService()
+        let reducer = MarketsReducer(syncService: syncService)
+        var state = MarketsState()
+        let legacy = FavoriteAssetSubscription(
+            coinGeckoID: "impostor",
+            binancePairID: "BTCUSDT"
+        )
+
+        _ = reducer.reduce(
+            state: &state,
+            action: .subscriptionsChanged([legacy, bitcoin])
+        )
+        XCTAssertEqual(state.subscriptions, [bitcoin])
+
+        _ = reducer.reduce(
+            state: &state,
+            action: .websocketFailed(.connectionLost)
+        )
+        let generation = state.generation
+        let effect = reducer.reduce(
+            state: &state,
+            action: .reconnectDelayElapsed(generation: generation, attempt: 1)
+        )
+        guard case let .merge(effects) = effect,
+              case let .stream(_, operation) = effects[0] else {
+            return XCTFail("Expected reconnect stream")
+        }
+        _ = operation()
+        await wait { !syncService.subscriptions.isEmpty }
+        XCTAssertEqual(syncService.subscriptions, [[bitcoin]])
+    }
+
     func test_committedBatchMarksConnectionLiveWithoutCopyingAssetData() {
         let reducer = MarketsReducer(syncService: MockLivePricesSyncService())
         let eventDate = Date(timeIntervalSince1970: 200)
