@@ -33,8 +33,18 @@ nonisolated struct LivePricesSyncService: LivePricesSyncServiceProtocol {
     ) -> AsyncStream<LivePricesSyncEvent> {
         AsyncStream { continuation in
             let task = Task {
+                let approvedSubscriptions = subscriptions.filter {
+                    BinancePairRegistry.approved.approves(
+                        coinGeckoID: $0.coinGeckoID,
+                        pairID: $0.binancePairID
+                    )
+                }
+                guard !approvedSubscriptions.isEmpty else {
+                    continuation.finish()
+                    return
+                }
                 let symbols = Array(
-                    Set(subscriptions.map(\.binancePairID))
+                    Set(approvedSubscriptions.map(\.binancePairID))
                 )
                 .sorted()
 
@@ -46,7 +56,7 @@ nonisolated struct LivePricesSyncService: LivePricesSyncServiceProtocol {
                         do {
                             let committedVersions = try await repository.applyLiveQuotes(
                                 quotes,
-                                subscriptions: subscriptions
+                                subscriptions: approvedSubscriptions
                             )
                             if !committedVersions.isEmpty,
                                let lastEventAt = quotes.map(\.lastUpdated).max() {

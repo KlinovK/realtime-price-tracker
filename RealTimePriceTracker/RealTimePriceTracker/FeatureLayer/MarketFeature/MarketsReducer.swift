@@ -185,7 +185,12 @@ private extension MarketsReducer {
             uniquingKeysWith: { _, latest in latest }
         )
         .values
-        .filter { !$0.binancePairID.isEmpty }
+        .filter {
+            BinancePairRegistry.approved.approves(
+                coinGeckoID: $0.coinGeckoID,
+                pairID: $0.binancePairID
+            )
+        }
         .sorted { $0.coinGeckoID < $1.coinGeckoID }
     }
 

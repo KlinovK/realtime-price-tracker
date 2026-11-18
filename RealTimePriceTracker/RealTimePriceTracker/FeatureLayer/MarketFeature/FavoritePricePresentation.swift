@@ -35,9 +35,13 @@ nonisolated struct FavoritePricePresentation: Equatable {
         livePrice: Decimal?,
         liveChange24h: Decimal?,
         liveUpdatedAt: Date?,
+        isApprovedPair: Bool,
         committedVersion: LiveQuoteVersion?,
         connection: MarketsConnectionState
     ) {
+        let livePrice = isApprovedPair ? livePrice : nil
+        let liveChange24h = isApprovedPair ? liveChange24h : nil
+        let liveUpdatedAt = isApprovedPair ? liveUpdatedAt : nil
         let observedVersion = LiveQuoteVersion(
             price: livePrice,
             change24h: liveChange24h,

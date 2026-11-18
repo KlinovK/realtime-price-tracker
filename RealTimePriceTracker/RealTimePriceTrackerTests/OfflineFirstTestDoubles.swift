@@ -85,12 +85,14 @@ actor MockMarketDataRepository: MarketDataRepositoryProtocol {
 
     func favoriteSubscriptions() async throws -> [FavoriteAssetSubscription] {
         favoriteIDs.compactMap { id in
-            assetsByID[id].map {
-                FavoriteAssetSubscription(
-                    coinGeckoID: id,
-                    binancePairID: $0.binanceUSDTID
-                )
+            guard assetsByID[id] != nil,
+                  let entry = BinancePairRegistry.approved.entry(for: id) else {
+                return nil
             }
+            return FavoriteAssetSubscription(
+                coinGeckoID: id,
+                binancePairID: entry.pairID
+            )
         }
         .sorted { $0.coinGeckoID < $1.coinGeckoID }
     }

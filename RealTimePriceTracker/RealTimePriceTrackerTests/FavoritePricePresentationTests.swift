@@ -71,11 +71,35 @@ final class FavoritePricePresentationTests: XCTestCase {
             livePrice: 110,
             liveChange24h: 2,
             liveUpdatedAt: timestamp,
+            isApprovedPair: true,
             committedVersion: committed,
             connection: .live
         )
         XCTAssertEqual(result.price, 100)
         XCTAssertEqual(result.status, .snapshot)
+    }
+
+    func test_unapprovedLegacyQuoteCannotAppearLiveOrAsCachedFallback() {
+        let committed = LiveQuoteVersion(
+            price: 999, change24h: 9,
+            updatedAt: Date(timeIntervalSince1970: 10)
+        )
+        let snapshots: [Decimal?] = [100, nil]
+        for snapshot in snapshots {
+            let result = FavoritePricePresentation(
+                snapshotPrice: snapshot,
+                snapshotChange24h: 1,
+                livePrice: 999,
+                liveChange24h: 9,
+                liveUpdatedAt: Date(timeIntervalSince1970: 10),
+                isApprovedPair: false,
+                committedVersion: committed,
+                connection: .live
+            )
+            XCTAssertEqual(result.price, snapshot)
+            XCTAssertEqual(result.source, snapshot == nil ? .none : .coinGecko)
+            XCTAssertEqual(result.status, snapshot == nil ? .missing : .snapshot)
+        }
     }
 
     private func presentation(
@@ -90,6 +114,7 @@ final class FavoritePricePresentationTests: XCTestCase {
             livePrice: quote,
             liveChange24h: 3,
             liveUpdatedAt: quote == nil ? nil : Date(timeIntervalSince1970: 10),
+            isApprovedPair: true,
             committedVersion: hasEvidence
                 ? LiveQuoteVersion(price: quote, change24h: 3,
                                    updatedAt: Date(timeIntervalSince1970: 10))

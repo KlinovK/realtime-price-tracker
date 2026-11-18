@@ -79,10 +79,13 @@ the newest pending value per Binance pair and flushes approximately every 150 ms
 That is the write throttle: one batch becomes one SwiftData save. Batches are
 processed in order; consistency takes priority over shaving write latency.
 
-The repository maps Binance pair IDs back to stable CoinGecko IDs using the exact
-subscription snapshot that opened the stream. If two favorites ambiguously map to
-the same Binance pair, no live quote is written to either record; both remain on
-their CoinGecko snapshot. Incorrect data is worse than missing realtime coverage.
+The repository subscribes only to pairs in the explicit CoinGecko ID to Binance
+Spot pair registry. Unknown IDs remain snapshot-only, even if an old record has
+a ticker-derived pair. The registry rejects conflicting IDs or pairs. The
+repository checks a captured subscription against that registry before writing,
+then stores the approved pair and quote in one save. The view ignores a cached
+Binance quote unless its stored pair matches the approved identity. Incorrect
+data is worse than missing realtime coverage.
 
 Connection state becomes `live` only after a batch commits. A database failure
 stops the stream and presents cached values as stale. Network failures use capped
@@ -110,14 +113,14 @@ show an older chart if refresh fails.
 - A failed or empty CoinGecko response never replaces a valid cache.
 - Snapshot replacement preserves favorite assets outside the current Top 100.
 - Removing a favorite clears its old Binance quote.
-- A Binance update is accepted only for a current, unambiguous favorite mapping.
+- A Binance update is accepted only for a favorited, approved pair mapping.
 - UI never renders provider DTOs or reducer-owned market arrays.
 - Network success is reported only after the matching SwiftData transaction saves.
 
 ## Remaining production hardening
 
-1. Replace symbol-derived Binance pairs with an explicit, validated provider-pair
-   mapping (for example, Binance exchange metadata stored with each asset).
+1. Validate approved pairs against current Binance Spot exchangeInfo metadata,
+   including base asset, quote asset, Spot eligibility, and trading status.
 2. Add authenticated CoinGecko configuration plus `Retry-After`-aware backoff and
    jitter for production quota behavior.
 3. Add an explicit image-byte cache if coin icons must be guaranteed offline; the
