@@ -1,23 +1,20 @@
-# Agent instructions
+# Agent instructions for CoinInsight
 
-## Purpose and stack
+## Identity and context
 
-Build a production-quality iOS market tracker while developing senior iOS engineering, a professional AI-assisted workflow, and Python / AI Engineer skills. Use Swift 6, SwiftUI, SwiftData, Swift Charts, URLSession, actors, async/await, and XCTest. Keep AI Chat Module at Medium / P2 priority; follow [the roadmap](docs/roadmap.md) for current sequencing.
+CoinInsight is the approved target for `KlinovK/realtime-price-tracker`. P0 is a useful production-quality native iOS financial app; P1 goals are senior iOS engineering and professional AI-assisted software engineering. PLAN-8 documentation is in progress; M00–M27 are not started. The current app is a legacy Favorites/Top 100 tracker.
 
-## Architecture
+Before substantive implementation, read the relevant parts of [README](README.md), [product requirements](docs/product.md), [architecture](ARCHITECTURE.md), [roadmap](docs/roadmap.md) and [engineering workflow](docs/ai-workflow.md). Product owns behavior; architecture technical invariants; roadmap sequencing/gates; workflow process/DoD; README current setup. Report material contradictions instead of inventing a decision. Provisional numbers and mechanisms are not approved production limits.
 
-- Follow [ARCHITECTURE.md](ARCHITECTURE.md). SwiftData is the UI-facing source of truth for market, favorite, and chart data; provider DTOs do not enter view state.
-- Reducers own transient state and cancellable effects. Report network success only after the matching persistence commit succeeds.
-- Preserve stable asset identity, offline data, and correct stale/live presentation. Treat concurrency, persistence, and realtime correctness changes as high risk.
+## Mandatory engineering rules
 
-## Working rules
+- Work only within authorized scope. Inspect branch, status, baseline and user changes before editing; preserve the original checkout and use isolation when authorized.
+- Use Decimal for financial truth, distinguish USD from USDT, never fabricate prices or treat missing values as zero. Preserve stable asset identity and explicit online eligibility for new non-USDT holdings; existing holdings remain editable offline.
+- Keep SwiftData as UI-facing truth. Financial holding mutation and snapshot are atomic; publish success only after matching commit. Never automatically reset the new financial store.
+- Respect Swift 6 actor ownership and cancellation. Verify concurrency and ordering deterministically, including independent mapping and quote revisions. Do not claim unrun tests passed.
+- V1 AI Analysis is static offline Demo Mode; no real LLM, portfolio analysis, personalized advice or AI Chat. Keep excluded features out of scope.
+- Follow applicable acceptance, architecture and [DoD](docs/ai-workflow.md#definition-of-done--dod-0117) rules. Record actual evidence, limitations, required independent review and correct workflow status.
 
-- Inspect branch, status, and relevant files before editing. Preserve existing changes. Do not switch a shared checkout, overwrite unrelated work, or run destructive Git commands without prior authorization. Use a separate worktree only when isolation is needed and authorized.
-- Keep changes within the approved scope. Do not add dependencies, architecture layers, or files without a concrete need.
-- Never put API keys, credentials, tokens, or private data in source, documentation, prompts, logs, or commits. Use approved local configuration; report and rotate exposed secrets.
-- For code changes, run relevant XCTest coverage and the shared scheme test command in [README.md](README.md#testing-and-ci) when feasible. Report the exact command, result, and any tests not run. CI is not a substitute for UI or device evidence when those behaviors change.
-- Follow [the AI workflow](docs/ai-workflow.md) for planning, risk review, evidence, approval gates, and the Engineering Learning Review.
+## Git and stop conditions
 
-## Definition of Done
-
-The approved scope is complete; architecture invariants hold; relevant validation is recorded; the diff has no unrelated changes; required independent review and developer approvals are complete; and material documentation is current. Do not commit, push, create a PR, merge, or release without prior authorization.
+Do not commit, push, create a PR, merge, reset/clean user work, perform destructive migration, change GitHub administration, rename the repository or release without explicit applicable authorization. Stop and report a missing authorization, baseline mismatch, material requirement contradiction, unexpected user change, unresolved high-risk correctness defect or missing required feasibility evidence. Keep work uncommitted when the task requires review before integration.
