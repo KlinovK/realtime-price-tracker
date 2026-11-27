@@ -1,6 +1,6 @@
 # CoinInsight roadmap
 
-This document owns development order, milestones, gates, checkpoints and provisional values. [Product](product.md) owns behavior, [architecture](../ARCHITECTURE.md) technical contracts and [workflow](ai-workflow.md) process. Approval PLAN-8-R1.5 adopted the replacement context. Planning/context recovery is complete; PLAN-8 documentation is **IN PROGRESS**, pending PLAN-9 separate review and authorized integration. PLAN-10 is pending. M00–M27: 0/28 complete; spikes: 0/6; technical gates: 0/10 passed; quality gates: 0/5 passed; checkpoints: 0/5 complete. No target implementation or feasibility result is claimed.
+This document owns development order, milestones, gates, checkpoints and provisional values. [Product](product.md) owns behavior, [architecture](../ARCHITECTURE.md) technical contracts and [workflow](ai-workflow.md) process. Approval PLAN-8-R1.5 adopted the replacement context; ED-01-R1 later superseded its Git integration policy. Foundational documentation is established. M00–M27: 0/28 complete; spikes: 0/6; technical gates: 0/10 passed; quality gates: 0/5 passed; checkpoints: 0/5 complete. No target implementation or feasibility result is claimed.
 
 ## Development strategy (DS-01–03)
 
@@ -8,18 +8,18 @@ This document owns development order, milestones, gates, checkpoints and provisi
 - **DS-02:** DS-02 Hybrid delivery: establish just enough architecture for an end-to-end walking skeleton, then build working product increments. Grow DesignSystem only as actual screens need components.
 - **DS-03:** DS-03 Dependency-driven gates: a feasibility spike shows that a technique can work; production verification shows the implemented feature works under its acceptance cases. Place each gate before its dependent work, while allowing unrelated work to continue.
 
-Build foundation first, prove risky assumptions before dependent commitments, use a compiling walking skeleton and working feature increments, maintain quality continuously and avoid a big-bang rewrite. M00 separates essential local toolchain from repository protection: separately authorized local M01 feasibility need not wait for future protected integration, while protected merges require QG-01.
+Build foundation first, prove risky assumptions before dependent commitments, use a compiling walking skeleton and working feature increments, maintain quality continuously and avoid a big-bang rewrite. M00 establishes the essential local toolchain and risk-based integration workflow; QG-01 validates applicable integration evidence before dependent work, while separately authorized local M01 feasibility can proceed without a GitHub protection rule.
 
 ## Milestones M00–M27
 
 Every row below is **NOT STARTED**. The approved source combines scope/deliverable/acceptance and dependency/evidence prose; both fields are retained here with named gate/checkpoint references. A stage is not passed by documentation.
 
-### M00 — Repository Protection & Engineering Toolchain
+### M00 — Repository Integration & Engineering Toolchain
 
 - **Priority:** P0. **Status:** NOT STARTED.
-- **Objective and scope:** Establish protected PR integration and reproducible essential tools. Excludes product code and speculative advanced gates. Deliver branch/rules configuration plan, pinned toolchain policy, lint/format/warning/coverage prototypes.
-- **Deliverable and acceptance:** Deliver a reproducible essential toolchain and authorized protection plan; verify rule behavior with a test PR and local/CI tool versions.
-- **Dependencies and required evidence:** No product dependency. QG-01, QG-02 start, QG-05. Evidence: authorized rules verified, a test PR exercises required checks, tool versions and reproducible local/CI results.
+- **Objective and scope:** Establish the ED-01-R1 risk-based integration workflow and reproducible essential tools. Excludes product code and speculative advanced gates. Deliver a workflow plan, pinned toolchain policy, lint/format/warning/coverage prototypes.
+- **Deliverable and acceptance:** Deliver a reproducible essential toolchain and demonstrate the approved low-, medium- and high-risk integration paths with applicable verification and local/CI tool versions.
+- **Dependencies and required evidence:** No product dependency. QG-01, QG-02 start, QG-05. Evidence: documented risk classification and authorized Git operations, representative PR/CI evidence where required, tool versions and reproducible local/CI results. GitHub protection configuration is optional.
 - **Applicable gates:** QG-01, QG-02, QG-05. **Checkpoint/release relationship:** CP-01.
 
 ### M01 — Architecture Feasibility
@@ -265,7 +265,7 @@ flowchart LR
  M03 --> M11
 ```
 
-The critical financial path is M03 → M04 → M12 → M13 → M14. M11 market Details and M12 holding CRUD converge at M16; CP-03 does not certify CRUD. M04 delivers target schema/transition mechanism and file-backed proof; M05–M15 migrate incrementally; M16 proves cutover readiness and seeks separate authorization for any destructive legacy retirement; M17 proves recovery. TG-09 is one staged gate. M04 and M12 can meet their stage obligations before final M16/M17 evidence, without marking TG-09 finally passed. QG-01 protects integration, not isolated authorized feasibility.
+The critical financial path is M03 → M04 → M12 → M13 → M14. M11 market Details and M12 holding CRUD converge at M16; CP-03 does not certify CRUD. M04 delivers target schema/transition mechanism and file-backed proof; M05–M15 migrate incrementally; M16 proves cutover readiness and seeks separate authorization for any destructive legacy retirement; M17 proves recovery. TG-09 is one staged gate. M04 and M12 can meet their stage obligations before final M16/M17 evidence, without marking TG-09 finally passed. QG-01 validates risk-based integration, not isolated authorized feasibility.
 
 ## Technical spikes SP-01–06
 
@@ -328,11 +328,11 @@ TG-09 has M04 mechanism fixtures, M16 cutover/authorized-retirement evidence if 
 
 ## Quality gates QG-01–05
 
-All are **OPEN** and activate with their named milestones; GitHub protection is an approved target policy, not a verified current configuration.
+All are **OPEN** and activate with their named milestones. ED-01-R1 makes GitHub protection optional; QG-01 remains open until the risk-based workflow has applicable verification.
 
 | Gate | Activation and verification | Reopen condition | Status |
 | --- | --- | --- | --- |
-| QG-01 Protected Integration, M00 | Solo Developer Protection: PR path, required green CI, no direct/force push or main deletion, human merge authorization, risk-based independent AI review, no required second human reviewer. Requires separately authorized GitHub administration and rule verification via test PR/API evidence. | Rule bypass, missing required check, direct-push path, permission/plan mismatch or configuration drift. | OPEN |
+| QG-01 Risk-Based Integration, M00 | Verify ED-01-R1 on representative work: low-risk direct integration only after applicable checks; medium-risk branch/PR when justified; high-risk independent review, PR and successful applicable CI before merge. Check authorization scope, user-change preservation, no force push/history rewrite/check bypass, and post-merge verification. GitHub protection is optional; repository administration still needs explicit authorization. | Missing applicable test or CI evidence, skipped high-risk review, unauthorized operation, user-change loss, failed-check bypass or workflow drift. | OPEN |
 | QG-02 Coverage Pipeline, M00–02 | Generate reproducible per-module/overall project-owned coverage, reviewed exclusions and progressive approved thresholds with regression check. Evidence: report and deliberately failing threshold test. | Broken extraction, misleading exclusions, threshold not enforced, toolchain change. | OPEN |
 | QG-03 Accessibility & Localization, M09–20 | Basic Accessibility and English-first String Catalog/locale checks enter with features; manual device/assistive-tech report and UI/resource tests close gate. | Missing essential chart alternative, clipped critical value, unlabeled state, resource/locale regression. | OPEN |
 | QG-04 Privacy & Release Compliance, M05–22 | Threat model, provider terms, file/backup protection, secret/dependency review, privacy manifest/disclosure and static AI Demo Mode suitability record. | Provider terms, data flow, dependency, release territory or App Review requirement changes. | OPEN |
@@ -354,7 +354,7 @@ All are **NOT COMPLETE**. A material change invalidates only affected checkpoint
 
 | ID | Effective correction |
 | --- | --- |
-| F-01 | M00 separates local essential tooling from protection; QG-01 precedes protected integration, not separately authorized local M01 work. |
+| F-01 | M00 separates local essential tooling from risk-based integration; QG-01 verifies applicable Git/CI workflow evidence without requiring GitHub protection before separately authorized local M01 work. ED-01-R1 supersedes the earlier protected-integration prerequisite. |
 | F-02 / FR-01 | M04 mechanism, M05–M15 migration, M16 cutover/authorized retirement, M17 recovery; one staged TG-09; no future-stage dependency cycle. |
 | F-03 | Trace decisions to owning milestone/evidence; preserve source gaps. |
 | F-04 | SP-06 checks technical, commercial, territorial, redistribution and operational provider feasibility; failure reopens access decision. |

@@ -45,6 +45,6 @@ xcodebuild test \
 
 ## Status and limits
 
-PLAN-8 documentation implementation awaits separate review and authorized integration. M00–M27 are not started. Current icon bytes are not guaranteed offline; production mapping, provider access, financial migration/recovery, UI/device verification and release readiness are open. No App Store availability is claimed.
+Foundational CoinInsight documentation is established under the owner-approved ED-01-R1 integration workflow. M00–M27 are not started. Current icon bytes are not guaranteed offline; production mapping, provider access, financial migration/recovery, UI/device verification and release readiness are open. No App Store availability is claimed.
 
 Existing [Top 100](docs/screenshots/top-assets.png) and [Favorites](docs/screenshots/favorites.png) screenshots depict the legacy app. The project is licensed under the [MIT License](LICENSE).
