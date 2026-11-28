@@ -8,9 +8,9 @@ on:
 
 jobs:
   test:
-    runs-on: macos-26
+    runs-on: xcode-27
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
 
     steps:
       - name: Checkout Code
@@ -18,12 +18,44 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Verify Xcode and simulator
+      - name: Verify canonical toolchain and simulator
         run: |
-          xcodebuild -version
-          xcodebuild -showdestinations \
+          echo "Runner image: ${ImageOS:-unknown} ${ImageVersion:-unknown}; architecture: ${RUNNER_ARCH:-unknown}"
+          echo "DEVELOPER_DIR: $DEVELOPER_DIR"
+          xcode_version="$(xcodebuild -version)"
+          printf '%s\n' "$xcode_version"
+          if [[ "$xcode_version" != $'Xcode 27.2\nBuild version 27B52' ]]; then
+            echo 'Expected Xcode 27.2 build 27B52.' >&2
+            exit 1
+          fi
+          swift_version="$(xcrun swift --version)"
+          printf '%s\n' "$swift_version"
+          if [[ "$swift_version" != *'Apple Swift version 6.4.2'* ]]; then
+            echo 'Expected Apple Swift 6.4.2.' >&2
+            exit 1
+          fi
+          xcodebuild -showsdks
+          for sdk in iphoneos iphonesimulator; do
+            sdk_version="$(xcrun --sdk "$sdk" --show-sdk-version)"
+            if [[ "$sdk_version" != '27.2' ]]; then
+              echo "Expected $sdk SDK 27.2; found $sdk_version." >&2
+              exit 1
+            fi
+          done
+          xcrun simctl list runtimes
+          destinations="$(xcodebuild -showdestinations \
             -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
-            -scheme RealTimePriceTracker
+            -scheme RealTimePriceTracker \
+            -onlyUsePackageVersionsFromResolvedFile)"
+          printf '%s\n' "$destinations"
+          if [[ "$destinations" != *'OS:27.2, name:iPhone 18 Pro'* ]]; then
+            echo 'Expected iPhone 18 Pro simulator on iOS 27.2.' >&2
+            exit 1
+          fi
+          jq -e '([.pins[] | {identity, version: .state.version}] | sort_by(.identity)) ==
+                 [{"identity":"swift-algorithms","version":"1.2.1"},
+                  {"identity":"swift-numerics","version":"1.1.1"}]' \
+            RealTimePriceTracker/RealTimePriceTracker.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
       - name: Prepare result bundle path
         id: result_bundle
@@ -39,7 +71,8 @@ jobs:
           xcodebuild test \
             -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
             -scheme RealTimePriceTracker \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
+            -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
+            -onlyUsePackageVersionsFromResolvedFile \
             -resultBundlePath "$RESULT_BUNDLE" \
             -parallel-testing-enabled NO \
             -quiet \
