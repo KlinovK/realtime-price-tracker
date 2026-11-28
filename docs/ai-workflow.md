@@ -56,6 +56,30 @@ The current project has one production app target, two test targets that depend 
 
 Sanitizer and mutation status is **feasibility only**. Xcode 27.2 exposes `-enableThreadSanitizer YES` and `-enableAddressSanitizer YES`; neither was run or made a gate here. Thread Sanitizer is limited to an iOS simulator for this app, targets runtime data races, and has substantial execution overhead; use focused concurrency/race tests after M02 and when relevant persistence or quote ordering work exists. Address Sanitizer can be tried on the existing test scheme for memory errors, but its value for this Swift-heavy baseline and CI cost remain unmeasured. Mutation testing has no pinned tool or established score method; assess it after executable Domain/reducer modules and meaningful coverage exist, without adopting the roadmap's provisional score as a gate. The `ManualClock` unused cancellation-ID case recorded above is deferred test-infrastructure debt, not a production defect; its lock discipline remains intact. QG-05 stays OPEN pending later architecture/static-analysis evidence and the separate coverage/sanitizer/mutation classifications.
 
+### Coverage measurement
+
+Run the shared scheme once with `-enableCodeCoverage YES` and a fresh `-resultBundlePath`, then run `python3 scripts/coverage-report.py --xcresult <bundle> --json-out <report.json> --markdown-out <report.md>` from the repository root. The [README](../README.md#testing-and-ci) gives the complete canonical command. CI uses the same extraction script on its existing test bundle and publishes both reports and the original Xcode result bundle. Python 3 is already present locally and on the runner; the script uses only the standard library and Xcode's `xccov`.
+
+The numerator and denominator are `xccov` covered and executable line counts for `RealTimePriceTracker.app`; overall and current directory-component percentages are calculated from summed counts, never averaged file percentages. All reported project-owned production Swift files, including UI, remain in the denominator. The unit-test target, the third-party `Algorithms` package target, build products and generated artifacts are outside that production target. There are no additional coverage-percentage exclusions. Reports include each production file, current components, zero-covered files and zero-executable-line files; a zero-executable-line component is shown as N/A and cannot satisfy an active threshold. The script rejects invalid counts/ratios, missing target or file data, unexpected source paths and changes to the reviewed unreported-file inventory.
+
+Local Xcode 27.2 / iPhone 18 Pro iOS 27.2 baseline on 2026-11-28: **77 passed, 0 failed, 0 skipped; 2,573 / 4,485 production executable lines covered (57.37%)**. The test target's 2,966 / 3,071 lines and `Algorithms` 0 / 0 are excluded. Current components are directory groupings within one app target, not SPM modules:
+
+| Current component | Covered / executable | Line coverage |
+| --- | ---: | ---: |
+| AppLayer | 263 / 339 | 77.58% |
+| CoreLayer/Networking | 816 / 878 | 92.94% |
+| CoreLayer/Other | 181 / 188 | 96.28% |
+| CoreLayer/Persistence | 481 / 554 | 86.82% |
+| DesignSystem | 18 / 166 | 10.84% |
+| DomainLayer | 37 / 50 | 74.00% |
+| FeatureLayer/AssetDetailsFeature | 52 / 586 | 8.87% |
+| FeatureLayer/MarketFeature | 572 / 1,057 | 54.12% |
+| FeatureLayer/TopAssetsFeature | 153 / 667 | 22.94% |
+
+The largest measured gaps are `AssetDetailsView.swift` (0/519), `TopAssetsView.swift` (0/336), `MarketsView.swift` (147/345), `TopAssetRow.swift` (0/117), `FavoriteAssetCell.swift` (0/111) and `GlassCard.swift` (0/107). These are coverage gaps, not exclusions. Ten project-owned source files have **no xccov file entry**: `AppLayer/AppAction.swift`, `CoreLayer/Networking/WebSocket/StreamConfiguration.swift`, `CoreLayer/Reducer.swift`, `DesignSystem/Themes/ThemeBackground.swift`, `DomainLayer/BinanceSocketResponse.swift`, `DomainLayer/BinanceTicker24h.swift`, `DomainLayer/BinanceTickerResponse.swift`, `FeatureLayer/AssetDetailsFeature/AssetDetailsAction.swift`, `FeatureLayer/MarketFeature/MarketsAction.swift` and `FeatureLayer/TopAssetsFeature/TopAssetsAction.swift`. They contain declarations or configuration with no reported executable lines in this result; the report does not claim they have zero source code or proven zero executable behavior. Their exact inventory is reviewed in the script and any change fails extraction until inspected. Reassess this inventory on source or toolchain changes.
+
+The script accepts an optional JSON threshold file, for example `{"overall": 85, "components": {"CoreLayer/Networking": 90}}`, via `--thresholds`. It fails if a required component is absent or has zero executable lines, or if a measured count is below its floor; equality passes. Controlled disposable fixtures verify passing, equality, below-floor, missing and invalid data, zero-line behavior and line-count-weighted aggregation. **No percentage floor is active in CI yet.** Initially, CI should block only failed extraction, malformed or missing production coverage data and changed unreported-file inventory; report the measured percentages without blocking on them. The owner must approve any initial numerical floor after reviewing the baseline and expected coverage changes. Activate the approved target thresholds below progressively when the corresponding executable modules exist; reassess the current directory groupings at M02. QG-02 remains OPEN pending progressive approved threshold activation and regression evidence for the eventual modules.
+
 ### Coverage targets
 
 - **Financial Domain, Financial Arithmetic, Portfolio Calculator:** 100% each

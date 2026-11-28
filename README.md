@@ -58,12 +58,19 @@ xcodebuild test \
   -scheme RealTimePriceTracker \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
   -onlyUsePackageVersionsFromResolvedFile \
+  -enableCodeCoverage YES \
   -derivedDataPath /private/tmp/coininsight-test-derived \
   -resultBundlePath /private/tmp/coininsight-tests.xcresult \
   -parallel-testing-enabled NO \
   -quiet \
   CODE_SIGNING_ALLOWED=NO
+python3 scripts/coverage-report.py \
+  --xcresult /private/tmp/coininsight-tests.xcresult \
+  --json-out /private/tmp/coininsight-coverage.json \
+  --markdown-out /private/tmp/coininsight-coverage.md
 ```
+
+The coverage command reports production executable lines by file and current component. Its scope, measured baseline and threshold policy are in [the engineering workflow](docs/ai-workflow.md#coverage-measurement).
 
 Upgrade the canonical Xcode, SDK, or simulator only through a reviewed change that verifies the new versions, preserves the deployment target and resolved dependencies, and passes local, PR, and post-merge tests.
 
