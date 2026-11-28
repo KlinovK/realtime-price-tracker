@@ -61,7 +61,7 @@ private actor DecodedEventCounter {
 
 @MainActor
 final class MarketsServiceTests: XCTestCase {
-    
+
     func test_startStreaming_createsSockets_andConnects() async {
         let mock1 = MockWebSocketClient()
         let mock2 = MockWebSocketClient()

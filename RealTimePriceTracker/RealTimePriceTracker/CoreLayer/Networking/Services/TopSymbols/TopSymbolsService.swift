@@ -34,11 +34,11 @@ nonisolated enum TopSymbolsServiceError: Error, Equatable, Sendable {
 final class TopSymbolsService: TopSymbolsServiceProtocol {
 
     // MARK: - Properties
-    
+
     private let dataLoader: (URL) async throws -> (Data, URLResponse)
-    
+
     // MARK: - Init
-    
+
     init(session: URLSession = .shared) {
         dataLoader = { url in
             try await session.data(from: url)
