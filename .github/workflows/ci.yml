@@ -57,6 +57,9 @@ jobs:
                   {"identity":"swift-numerics","version":"1.1.1"}]' \
             RealTimePriceTracker/RealTimePriceTracker.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
+      - name: Check Swift lint and formatting
+        run: bash scripts/swift-quality.sh check
+
       - name: Prepare result bundle path
         id: result_bundle
         run: |
