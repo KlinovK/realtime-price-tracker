@@ -18,7 +18,7 @@ Read the [product requirements](docs/product.md) for behavior, [architecture](AR
 
 ## Build and run
 
-Prerequisites: compatible Xcode with Swift 6 and iOS 26.2 support, plus a suitable simulator or device. The checked-in project and shared scheme remain named `RealTimePriceTracker`; the repository, app target and Bundle Identifier have not been renamed. Open the project, choose the `RealTimePriceTracker` scheme and run:
+The canonical toolchain is Xcode 27.2 (build 27B52), Apple Swift 6.4.2, and the iOS 27.2 build SDK. The app retains its iOS 26.2 minimum deployment target, Swift 6 language mode, and complete strict concurrency. Use the iPhone 18 Pro simulator on iOS 27.2 for the shared tests. The checked-in project and shared scheme remain named `RealTimePriceTracker`; the repository, app target and Bundle Identifier have not been renamed. Open the project, choose the `RealTimePriceTracker` scheme and run:
 
 ```bash
 open RealTimePriceTracker/RealTimePriceTracker.xcodeproj
@@ -28,20 +28,42 @@ The current sample setup uses keyless CoinGecko access. Production provider acce
 
 ## Testing and CI
 
-The baseline contains an XCTest unit-test target and a UI-test target without implemented UI automation. The checked-in [CI workflow](.github/workflows/ci.yml) uses Xcode 26.6 on macOS 26 with an iPhone 17 Pro simulator running iOS 26.5. Earlier CI results are historical evidence only. **No application tests or CI were run for this documentation task.**
+The baseline contains an XCTest unit-test target and a UI-test target without implemented UI automation. The checked-in [CI workflow](.github/workflows/ci.yml) selects Xcode 27.2 on the `xcode-27` runner and tests on iPhone 18 Pro with iOS 27.2. The previous Xcode 26.6 CI results are historical evidence; verify the updated workflow on its PR and after merge.
 
-To run the shared scheme in a matching local environment:
+Select the canonical Xcode for these commands without changing the system-wide selection. Keep the checked-in `Package.resolved` unchanged; `-onlyUsePackageVersionsFromResolvedFile` prevents automatic selection of different package versions. Use task-specific paths outside the checkout for derived data and result bundles:
+
+```bash
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcodebuild -version
+xcrun swift --version
+xcodebuild -showsdks
+xcodebuild build \
+  -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
+  -scheme RealTimePriceTracker \
+  -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' \
+  -onlyUsePackageVersionsFromResolvedFile \
+  -derivedDataPath /private/tmp/coininsight-build-derived \
+  -quiet \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+Set `DEVELOPER_DIR` to the installed Xcode 27.2 developer directory if it is elsewhere. Run the shared scheme with the same Xcode:
 
 ```bash
 xcodebuild test \
   -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
   -scheme RealTimePriceTracker \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5' \
-  -derivedDataPath /private/tmp/rpt-stabilization-derived \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
+  -onlyUsePackageVersionsFromResolvedFile \
+  -derivedDataPath /private/tmp/coininsight-test-derived \
+  -resultBundlePath /private/tmp/coininsight-tests.xcresult \
   -parallel-testing-enabled NO \
   -quiet \
   CODE_SIGNING_ALLOWED=NO
 ```
+
+Upgrade the canonical Xcode, SDK, or simulator only through a reviewed change that verifies the new versions, preserves the deployment target and resolved dependencies, and passes local, PR, and post-merge tests.
 
 ## Status and limits
 
