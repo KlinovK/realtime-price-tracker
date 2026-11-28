@@ -56,6 +56,7 @@ Set `DEVELOPER_DIR` to the installed Xcode 27.2 developer directory if it is els
 xcodebuild test \
   -project RealTimePriceTracker/RealTimePriceTracker.xcodeproj \
   -scheme RealTimePriceTracker \
+  -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
   -onlyUsePackageVersionsFromResolvedFile \
   -enableCodeCoverage YES \
