@@ -76,6 +76,7 @@ jobs:
             -scheme RealTimePriceTracker \
             -destination 'platform=iOS Simulator,name=iPhone 18 Pro,OS=27.2' \
             -onlyUsePackageVersionsFromResolvedFile \
+            -enableCodeCoverage YES \
             -resultBundlePath "$RESULT_BUNDLE" \
             -parallel-testing-enabled NO \
             -quiet \
@@ -118,6 +119,29 @@ jobs:
             printf '| ---: | ---: | ---: | ---: |\n'
             printf '| %s | %s | %s | %s |\n' "$total" "$passed" "$failed" "$skipped"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report production coverage
+        if: ${{ steps.tests.outcome == 'success' }}
+        env:
+          RESULT_BUNDLE: ${{ steps.result_bundle.outputs.path }}
+        run: |
+          coverage_dir="$RUNNER_TEMP/coverage"
+          mkdir -p "$coverage_dir"
+          python3 scripts/coverage-report.py \
+            --xcresult "$RESULT_BUNDLE" \
+            --json-out "$coverage_dir/report.json" \
+            --markdown-out "$coverage_dir/report.md"
+          awk '/^\| Production file / { exit } { print }' "$coverage_dir/report.md" >> "$GITHUB_STEP_SUMMARY"
+          printf 'File-level coverage and reviewed omissions are in the production-coverage artifact.\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload production coverage reports
+        if: ${{ steps.tests.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coverage/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload Xcode result bundle
         if: ${{ always() && steps.tests.outcome != 'skipped' && steps.result_bundle.outputs.path != '' }}
