@@ -34,6 +34,20 @@ Classify risk by the highest-risk affected behavior. Financial arithmetic, ident
 
 Use Swift 6 strict concurrency; validate and pin released dependencies/tools. Prefer deterministic offline CI, injected clocks and controlled interleavings over sleeps. Test Domain, reducers, services, provider fixtures, file-backed persistence/migration, property/edge cases, UI/device behavior, fault injection and performance according to risk. Record build/lint/static-analysis, security/privacy, accessibility and locale evidence when applicable.
 
+### Swift quality policy
+
+Project-owned app, unit-test and UI-test targets use `SWIFT_TREAT_WARNINGS_AS_ERRORS = YES` in Debug and Release. This target-level setting does not impose a command-line override on third-party packages. Swift 6 language mode, complete strict concurrency and existing actor isolation remain in force. Do not suppress compiler diagnostics to pass a build; review any new warning and its cause. SwiftLint and SwiftFormat versions, hashes, rules and the shared local/CI command are in `scripts/swift-quality.sh`, `.swiftlint.yml` and `.swiftformat`. Lint rules focus on unsafe casts/tries, duplicate imports, identical operands, invalid lint directives and trailing whitespace. Formatting changes only trailing whitespace and consecutive blank lines. CI checks without rewriting source. Review rule/tool upgrades with local and CI evidence.
+
+The existing `@unchecked Sendable` inventory is test-only. Each class has mutable state, so checked conformance is not currently available. Retain these exceptions while their stated lock discipline holds; review on every relevant edit or toolchain change. No `@preconcurrency`, `nonisolated(unsafe)` or SwiftLint/SwiftFormat diagnostic-suppression directives were found in project-owned Swift at M00-02.
+
+| File / type | Mutable state and synchronization | Safety evidence, residual risk and disposition |
+| --- | --- | --- |
+| `LivePricesSyncServiceTests.swift` / `RecordingMarketsService` | Recorded calls are protected by `NSLock`. | Call capture is synchronized and exercised by streaming tests. Retain; future mutable fields must share the lock. |
+| `OfflineFirstTestDoubles.swift` / `MockLivePricesSyncService` | Subscription history and `AsyncStream` continuation are protected by `NSLock`; event emission uses a continuation copied under the lock. | Existing live-price tests exercise cross-task delivery. Retain; preserve the lock when changing continuation ownership. |
+| `OfflineFirstTestDoubles.swift` / `MockLegacyFavoritesRepository` | Favorite ID set is protected by `NSLock`. | Repository tests exercise load/save through the synchronized methods. Retain; keep all state access locked. |
+| `StoreCancellationTests.swift` / `TerminationRecorder` | Counter is protected by `NSLock`. | Cancellation tests assert the recorded count. Retain; the synchronization contract is small and explicit. |
+| `MarketsServiceTests.swift` / `ManualClock` | Current instant, sleepers and cancellation IDs are protected by `NSLock`; continuations are resumed outside the lock. | Deterministic clock/cancellation tests cover the intended interleavings. Retain; cancellation after a completed sleep can leave an unused ID in this test helper, so avoid long-lived reuse and review if expanded. |
+
 ### Coverage targets
 
 - **Financial Domain, Financial Arithmetic, Portfolio Calculator:** 100% each

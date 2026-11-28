@@ -1,0 +1,12 @@
+only_rules:
+  - duplicate_imports
+  - force_cast
+  - force_try
+  - identical_operands
+  - invalid_swiftlint_command
+  - trailing_whitespace
+
+excluded:
+  - .build
+  - DerivedData
+  - RealTimePriceTracker/DerivedData

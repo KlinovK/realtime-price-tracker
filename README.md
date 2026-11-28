@@ -28,7 +28,9 @@ The current sample setup uses keyless CoinGecko access. Production provider acce
 
 ## Testing and CI
 
-The baseline contains an XCTest unit-test target and a UI-test target without implemented UI automation. The checked-in [CI workflow](.github/workflows/ci.yml) selects Xcode 27.2 on the `xcode-27` runner and tests on iPhone 18 Pro with iOS 27.2. The previous Xcode 26.6 CI results are historical evidence; verify the updated workflow on its PR and after merge.
+Run `bash scripts/swift-quality.sh check` before building. The script downloads exact SwiftLint 0.65.1 and SwiftFormat 0.64.7 release binaries into a temporary directory, verifies their SHA-256 hashes and versions, then checks project-owned Swift without changing tracked files. It requires `curl`, `unzip`, and `shasum`; no global installation is needed. Run `bash scripts/swift-quality.sh format` to apply the narrowly configured whitespace rules, then run `check` again. CI runs the same check. Upgrade either tool only through a reviewed version, hash, configuration, local and CI verification change. The warning and concurrency-exception policy is in [the engineering workflow](docs/ai-workflow.md#swift-quality-policy).
+
+The baseline contains an XCTest unit-test target and a UI-test target without implemented UI automation. The checked-in [CI workflow](.github/workflows/ci.yml) selects Xcode 27.2 on the `xcode-27` runner and tests on iPhone 18 Pro with iOS 27.2. Check the current PR and post-merge CI runs for applicable verification evidence.
 
 Select the canonical Xcode for these commands without changing the system-wide selection. Keep the checked-in `Package.resolved` unchanged; `-onlyUsePackageVersionsFromResolvedFile` prevents automatic selection of different package versions. Use task-specific paths outside the checkout for derived data and result bundles:
 
